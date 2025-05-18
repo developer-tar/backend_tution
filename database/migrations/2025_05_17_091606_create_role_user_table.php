@@ -27,8 +27,8 @@ return new class extends Migration {
             $table->softDeletes();
             $table->timestamps();
         });
-        // $user = User::find(1);
-        // $user->roles()->attach(1, ['created_at' => now(),'updated_at' => now()]);
+        $user = User::find(1);
+        $user->roles()->attach(1, ['created_at' => now(),'updated_at' => now()]);
 
     }
 

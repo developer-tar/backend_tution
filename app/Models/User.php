@@ -54,7 +54,7 @@ class User extends Authenticatable
     }
     public function roles()
     {
-        return $this->BelongsToMany(Role::class);
+        return $this->BelongsToMany(Role::class, 'role_user');
     }
     public function setEmailAttribute($value)
     {

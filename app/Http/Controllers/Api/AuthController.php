@@ -75,13 +75,14 @@ class AuthController extends Controller
             $user = User::create($data);
             if ($user) {
                 $role = $request->role;
-                $roleQuery = Role::select('name')->where('name', config('constants.roles.' . $role))->firstOrFail();
+                $roleQuery = Role::select('id')->where('name', config('constants.roles.' . $role))->firstOrFail();
+               
                 $user->roles()->attach($roleQuery['id'], ['created_at' => now(), 'updated_at' => now()]);
-
+                $success['token'] = $user->createToken('accessToken')->accessToken;
+                $success['full_name'] = $user->full_name;
             }
             DB::commit();
-            $success['full_name'] = $user->full_name;
-            $success['token'] = $user->createToken('accessToken')->accessToken;
+            
             return sendResponse($success, 'User has been successfully created.', 201);
         } catch (Exception $e) {
             DB::rollBack();
