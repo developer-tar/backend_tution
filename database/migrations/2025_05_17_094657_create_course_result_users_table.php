@@ -13,8 +13,18 @@ return new class extends Migration
     {
         Schema::create('course_result_users', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('student_id')->constrained('users');
-            $table->foreignId('test_id')->constrained('course_tests');
+            $table->foreignId('student_id')->index();
+            $table->foreign('student_id', 'student_id111_foreign')
+            ->references('id')
+            ->on('users')
+            ->onDelete('cascade');
+
+            $table->foreignId('test_id')->index();
+            $table->foreign('test_id', 'test_id111_foreign')
+            ->references('id')
+            ->on('course_tests')
+            ->onDelete('cascade');
+
             $table->string('test_score');
             $table->timestamps();
         });

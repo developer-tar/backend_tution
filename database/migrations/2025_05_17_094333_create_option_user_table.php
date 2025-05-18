@@ -11,15 +11,15 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('course_answers', function (Blueprint $table) {
+        Schema::create('option_user', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('course_option_id')->index();
-            $table->foreign('course_option_id', 'course_options_id_foreign')
+            $table->foreignId('question_user_id')->index();
+            $table->foreign('question_user_id', 'question_user_id1111_foreign')
             ->references('id')
-            ->on('course_options')
+            ->on('question_user')
             ->onDelete('cascade');
-            $table->tinyInteger('status')->default(config('constants.statuses.APPROVED'))->nullable()->comment('1= Pending, 2 = Approved 3= Rejected');
-            $table->softDeletes();
+           
+            $table->dateTime('completed_at')->nullable();  
             $table->timestamps();
         });
     }
@@ -29,6 +29,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('course_answers');
+        Schema::dropIfExists('option_users');
     }
 };

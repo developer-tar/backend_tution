@@ -13,7 +13,12 @@ return new class extends Migration
     {
         Schema::create('question_user', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('test_user_id')->constrained('test_user')->index()->nullable();
+            $table->foreignId('test_user_id')->index()->nullable();
+            $table->foreign('test_user_id', 'test_user_id112_foreign')
+            ->references('id')
+            ->on('test_user')
+            ->onDelete('cascade');
+
             $table->tinyInteger('is_completed')->default(config('constants.completed.NO'))->nullable();  
             $table->dateTime('completed_at')->nullable();  
             $table->timestamps();

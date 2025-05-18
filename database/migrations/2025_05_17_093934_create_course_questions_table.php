@@ -13,7 +13,12 @@ return new class extends Migration
     {
         Schema::create('course_questions', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('course_test_id')->constrained('course_tests')->index();
+            $table->foreignId('course_test_id')->index();
+            $table->foreign('course_test_id', 'course_tests_foreign')
+            ->references('id')
+            ->on('course_tests')
+            ->onDelete('cascade');
+
             $table->string('name');
             $table->tinyInteger('status')->default(config('constants.statuses.APPROVED'))->nullable()->comment('1= Pending, 2 = Approved 3= Rejected');
             $table->string('duration_in_sec')->nullable();

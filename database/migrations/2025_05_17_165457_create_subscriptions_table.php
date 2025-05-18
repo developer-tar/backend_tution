@@ -14,6 +14,10 @@ return new class extends Migration
         Schema::create('subscriptions', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id');
+            $table->foreign('user_id', 'user_id11223_foreign')
+            ->references('id')
+            ->on('users')
+            ->onDelete('cascade');
             $table->string('type');
             $table->string('stripe_id')->unique();
             $table->string('stripe_status');

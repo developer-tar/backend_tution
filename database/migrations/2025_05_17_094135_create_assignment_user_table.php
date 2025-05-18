@@ -13,8 +13,16 @@ return new class extends Migration
     {
         Schema::create('assignments_user', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('course_user_id')->constrained('course_user')->index();
-            $table->foreignId('course_assignment_id')->constrained('course_assignments')->index();
+            $table->foreignId('course_user_id')->index();
+            $table->foreign('course_user_id', 'course_user_id_foreign')
+            ->references('id')
+            ->on('course_user')
+            ->onDelete('cascade');
+            $table->foreignId('course_assignment_id')->index();
+            $table->foreign('course_assignment_id', 'course_assignment_id_foreign')
+            ->references('id')
+            ->on('course_assignments')
+            ->onDelete('cascade');
             $table->tinyInteger('is_completed')->default(config('constants.completed.NO'))->nullable();  
             $table->dateTime('completed_at')->nullable(); 
             $table->softDeletes();

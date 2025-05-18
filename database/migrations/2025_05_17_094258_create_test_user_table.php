@@ -13,8 +13,18 @@ return new class extends Migration
     {
         Schema::create('test_user', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('topic_user_id')->constrained('topic_user')->index()->nullable();
-            $table->foreignId('sub_topic_user_id')->constrained('sub_topic_user')->index()->nullable();
+            $table->foreignId('topic_user_id')->index()->nullable();
+            $table->foreign('topic_user_id', 'topic_user_id1_foreign')
+            ->references('id')
+            ->on('topic_user')
+            ->onDelete('cascade');
+            
+            $table->foreignId('sub_topic_user_id')->index()->nullable();
+            $table->foreign('sub_topic_user_id', 'sub_topic_user_id1_foreign')
+            ->references('id')
+            ->on('sub_topic_user')
+            ->onDelete('cascade');
+            
             $table->tinyInteger('is_completed')->default(config('constants.completed.NO'))->nullable();  
             $table->dateTime('completed_at')->nullable();  
             $table->softDeletes();

@@ -13,7 +13,11 @@ return new class extends Migration
     {
         Schema::create('course_topics', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('course_content_id')->constrained('course_contents')->index();
+            $table->foreignId('course_content_id')->index();
+            $table->foreign('course_content_id', 'course_contents_foreign')
+            ->references('id')
+            ->on('course_contents')
+            ->onDelete('cascade');
             $table->string('name');
             $table->tinyInteger('status')->default(config('constants.statuses.APPROVED'))->nullable()->comment('1= Pending, 2 = Approved 3= Rejected');
             $table->softDeletes();

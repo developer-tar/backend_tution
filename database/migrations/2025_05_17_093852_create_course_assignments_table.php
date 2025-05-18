@@ -13,7 +13,11 @@ return new class extends Migration
     {
         Schema::create('course_assignments', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('acdemic_course_id')->constrained('acdemic_course')->index();
+            $table->foreignId('acdemic_course_id')->index();
+            $table->foreign('acdemic_course_id', 'acdemic_course_foreign')
+            ->references('id')
+            ->on('acdemic_course')
+            ->onDelete('cascade');
             $table->dateTime('start_date_time');
             $table->dateTime('end_date_time');
             $table->tinyInteger('status')->default(config('constants.statuses.APPROVED'))->nullable()->comment('1= Pending, 2 = Approved 3= Rejected');

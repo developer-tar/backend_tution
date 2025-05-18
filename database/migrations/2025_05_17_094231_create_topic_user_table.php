@@ -13,8 +13,18 @@ return new class extends Migration
     {
         Schema::create('topic_user', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('content_user_id')->constrained('content_user')->index();
-            $table->foreignId('topic_id')->constrained('course_topics')->index();
+            $table->foreignId('content_user_id')->index();
+            $table->foreign('content_user_id', 'content_user_ids_foreign')
+            ->references('id')
+            ->on('content_user')
+            ->onDelete('cascade');
+
+            $table->foreignId('topic_id')->index();
+            $table->foreign('topic_id', 'course_topics_ids_foreign')
+            ->references('id')
+            ->on('course_topics')
+            ->onDelete('cascade');
+            
             $table->tinyInteger('is_completed')->default(config('constants.completed.NO'))->nullable();  
             $table->dateTime('completed_at')->nullable();  
             $table->softDeletes();

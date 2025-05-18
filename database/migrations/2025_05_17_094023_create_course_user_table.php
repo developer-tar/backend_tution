@@ -13,8 +13,18 @@ return new class extends Migration
     {
         Schema::create('course_user', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('course_id')->constrained('courses')->index();
-            $table->foreignId('buyer_id')->constrained('users')->index();
+            $table->foreignId('course_id')->index();
+            $table->foreign('course_id', 'courses_foreign')
+            ->references('id')
+            ->on('courses')
+            ->onDelete('cascade');
+            
+            $table->foreignId('buyer_id')->index();
+            $table->foreign('buyer_id', 'buyer_foreign')
+            ->references('id')
+            ->on('users')
+            ->onDelete('cascade');
+
             $table->string('stripe_session_id')->nullable(); 
             $table->string('transaction_id')->nullable();    
             $table->decimal('amount', 8, 2)->nullable();     

@@ -13,8 +13,16 @@ return new class extends Migration
     {
         Schema::create('course_contents', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('assignment_id')->constrained('course_assignments')->index();
-            $table->foreignId('course_subject_id')->constrained('course_subject')->index();
+            $table->foreignId('assignment_id')->index();
+            $table->foreign('assignment_id', 'course_assignments_foreign')
+            ->references('id')
+            ->on('course_assignments')
+            ->onDelete('cascade');
+            $table->foreignId('course_subject_id')->index();
+            $table->foreign('course_subject_id', 'course_subject_foreign')
+            ->references('id')
+            ->on('course_subject')
+            ->onDelete('cascade');
             $table->string('name');
             $table->tinyInteger('status')->default(config('constants.statuses.APPROVED'))->nullable()->comment('1= Pending, 2 = Approved 3= Rejected');
             $table->softDeletes();
