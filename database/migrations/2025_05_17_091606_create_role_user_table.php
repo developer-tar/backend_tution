@@ -14,13 +14,22 @@ return new class extends Migration {
         Schema::create('role_user', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->index();
+            $table->foreign('user_id', 'features_user_role_id_foreign')
+                ->references('id')
+                ->on('users')
+                ->onDelete('cascade');
+
             $table->foreignId('role_id')->index();
+            $table->foreign('role_id', 'featuresroles_id_foreign')
+                ->references('id')
+                ->on('roles')
+                ->onDelete('cascade');
             $table->softDeletes();
             $table->timestamps();
         });
-        $user = User::find(1);
-        $user->roles()->attach(1, ['created_at' => now(),'updated_at' => now()]);
-        
+        // $user = User::find(1);
+        // $user->roles()->attach(1, ['created_at' => now(),'updated_at' => now()]);
+
     }
 
     /**

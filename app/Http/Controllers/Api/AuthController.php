@@ -4,9 +4,14 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\LoginRequest;
+use App\Http\Requests\Api\RegisterRequest;
+use App\Models\Role;
+use App\Models\User;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Response;
 
@@ -51,6 +56,38 @@ class AuthController extends Controller
         } catch (Exception $e) {
             Log::error("Error occur login. Message => {$e->getMessage()}, File => {$e->getFile()},  Line No => {$e->getLine()}, Error Code => {$e->getCode()}.");
             return sendError('Error', ['error' => 'An error is occured.'], 500);
+        }
+    }
+
+    /**
+     * User registration API method
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function register(RegisterRequest $request)
+    {
+        try {
+
+            DB::beginTransaction();
+            $data = $request->all();
+            $data['password'] = Hash::make($data['password']);
+            $user = User::create($data);
+            if ($user) {
+                $role = $request->role;
+                $roleQuery = Role::select('name')->where('name', config('constants.roles.' . $role))->firstOrFail();
+                $user->roles()->attach($roleQuery['id'], ['created_at' => now(), 'updated_at' => now()]);
+
+            }
+            DB::commit();
+            $success['full_name'] = $user->full_name;
+            $success['token'] = $user->createToken('accessToken')->accessToken;
+            return sendResponse($success, 'User has been successfully created.', 201);
+        } catch (Exception $e) {
+            DB::rollBack();
+            $success['token'] = [];
+            Log::error("Failed to register  user. Message => {$e->getMessage()}, File => {$e->getFile()},  Line No => {$e->getLine()}, Error Code => {$e->getCode()}.");
+            return sendResponse($success, 'Unable to create a new user.' . $e->getCode(), 500);
         }
     }
 }
