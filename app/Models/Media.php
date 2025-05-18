@@ -6,5 +6,14 @@ use Illuminate\Database\Eloquent\Model;
 
 class Media extends Model
 {
-    //
+    protected $fillable = [
+        'path',
+        'type',
+        'model_id',
+        'model_name',
+    ];
+    public function model()
+    {
+        return $this->morphTo();
+    }
 }

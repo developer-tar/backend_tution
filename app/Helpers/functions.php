@@ -42,3 +42,14 @@ function sendError($error, $errorMessages = [], $code = 404)
     return Response::json($response, $code);
 
 }
+
+
+function getFileType($extension)
+{
+    return match ($extension) {
+        'jpg', 'jpeg', 'png', 'gif' => config('constants.path.image'),
+        'mp4', 'avi', 'mkv' => config('constants.path.video'),
+        'pdf' => config('constants.path.pdf'),
+        default => config('constants.path.others'),
+    };
+}
