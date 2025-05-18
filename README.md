@@ -59,3 +59,13 @@ If you discover a security vulnerability within Laravel, please send an e-mail t
 ## License
 
 The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+
+
+
+## For token generate 
+php artisan install:api --passport
+
+after the migrate
+Run the command for create the token , you need create dummy personal accesss token 
+by  this command 
+php artisan passport:client --personal
