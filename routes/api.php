@@ -1,0 +1,14 @@
+<?php
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\AuthController;
+
+// Route::get('/user', function (Request $request) {
+//     return $request->user();
+// })->middleware('auth:api');
+
+Route::get('/testing', function () {
+    return 'Hello welcome to api world';
+});
+Route::post('login', [AuthController::class, 'login']);

@@ -14,11 +14,10 @@ return new class extends Migration
     {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('company_id')->nullable()->index();
             $table->string('first_name');
             $table->string('last_name')->nullable();
             $table->string('email')->unique();
-            $table->tinyInteger('status')->default(config('constants.statuses.PENDING'))->nullable()->comment('1= Pending, 2 = Approved 3= Rejected');
+            $table->tinyInteger('status')->default(config('constants.statuses.APPROVED'))->nullable()->comment('1= Pending, 2 = Approved 3= Rejected');
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
             $table->string('stripe_id')->nullable()->index();
