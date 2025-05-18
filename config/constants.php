@@ -17,8 +17,8 @@ return [
         'VERBAL_NON_VERBAL_REASONING' => 'Verbal & Non-Verbal Reasoning',
     ],
     'locations' => [
-        'ENGLISH' => 'Ealing',
-        'MATH' => 'Kingston',
+        'EALING' => 'Ealing',
+        'KINGSTON' => 'Kingston',
         'NEW_MALDEN' => 'New Malden',
         'SLOUGH' => 'Slough',
         'WIMBLEDON' => 'Wimbledon',
@@ -36,19 +36,20 @@ return [
     ],
     'acdemic_start_year' => [
         2025,
+        2026,
         2027,
-        2029,
-        2031,
+        2028,
     ],
     'acdemic_end_year' => [
         2026,
+        2027,
         2028,
-        2030,
-        2032,
+        2029,
     ],
     'completed' => [
         'YES' => 1,
         'NO' => 0,
     ],
+
 ]
     ?>

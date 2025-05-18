@@ -12,4 +12,12 @@ class AcdemicYear extends Model
         "start_year",
         "end_year",
     ];
+    protected $hidden = ['start_year', 'end_year', 'deleted_at', 'created_at', 'updated_at'];
+
+    protected $appends = ['start_end_year'];
+    public function getStartEndYearAttribute()
+    {
+
+        return $this->start_year . '/' . $this->end_year;
+    }
 }
