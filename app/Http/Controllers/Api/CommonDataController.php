@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\CheckQueryDataRequest;
 use App\Models\AcdemicYear;
 use App\Models\Location;
+use App\Models\Mode;
 use App\Models\Role;
 
 use App\Models\Subject;
@@ -35,6 +36,9 @@ class CommonDataController extends Controller
             }
             if ($request->filled('param') && $request->param == 'Locations') {
                 $data = Location::select('id','name')->get();
+            }
+              if ($request->filled('param') && $request->param == 'Modes') {
+                $data = Mode::select('id','name')->get();
             }
             if ($data->isNotEmpty()) {
                 $response = [

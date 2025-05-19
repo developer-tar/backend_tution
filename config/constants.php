@@ -59,5 +59,9 @@ return [
         'pdf' => 3,
         'others' => 4,
     ],
+    'modes' => [
+        'in_person' => 'In person',
+        'online' => 'Online',
+    ]
 ]
     ?>
