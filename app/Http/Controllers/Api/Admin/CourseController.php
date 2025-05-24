@@ -40,17 +40,8 @@ class CourseController extends Controller
             $courseObj = Course::create($courseData);
 
             if ($request->hasFile('course_image')) {
-                $file = $request->file('course_image');
-                $path = $file->store('courses', 'public');
-                $extension = $file->getClientOriginalExtension();
-                $imagePath = 'storage/' . $path;
-
-                $courseObj->media()->create([
-                    'path' => $imagePath,
-                    'type' => getFileType($extension),
-                    'model_type' => Course::class,
-                    'model_id' => $courseObj->id,
-                ]);
+                $courseObj->addMediaFromRequest('course_image')
+                    ->toMediaCollection('course_image', 'public');
             }
 
             $subjectData = collect($request->subject_ids)->mapWithKeys(fn($id) => [
@@ -81,7 +72,7 @@ class CourseController extends Controller
             // Dispatch stripe creation as a queued job
             dispatch(new CreateStripePrice($courseObj->id, $courseObj->amount));
 
-            return sendResponse( 'Course created successfully.', 201);
+            return sendResponse('Course created successfully.', 201);
 
         } catch (\Exception $e) {
             DB::rollBack();

@@ -3,9 +3,11 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-
-class Course extends Model
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
+class Course extends Model implements HasMedia
 {
+     use InteractsWithMedia;
     protected $fillable = [
         'created_id',
         'name',
@@ -32,9 +34,9 @@ class Course extends Model
     {
         return $this->belongsToMany(AcdemicYear::class, 'acdemic_course', 'course_id', 'acdemic_id');
     }
-    public function media()
-    {
-        return $this->morphMany(Media::class, 'model');
-    }
+    // public function media()
+    // {
+    //     return $this->morphMany(Media::class, 'model');
+    // }
 
 }

@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 
 use App\Http\Requests\Api\CheckQueryDataRequest;
 use App\Models\AcdemicYear;
+use App\Models\Course;
 use App\Models\Location;
 use App\Models\Mode;
 use App\Models\Role;
