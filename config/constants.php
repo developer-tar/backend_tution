@@ -50,9 +50,6 @@ return [
         'YES' => 1,
         'NO' => 0,
     ],
-    'product_id' => env('PRODUCT_ID'),
-    'sk_test' => env('SK_TEST'),
-    'pk_test' => env('PK_TEST'),
     'path' => [
         'image' => 1,
         'video' => 2,

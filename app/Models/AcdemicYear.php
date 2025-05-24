@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class AcdemicYear extends Model
 {
     use SoftDeletes;
+    
     protected $fillable = [
         "start_year",
         "end_year",

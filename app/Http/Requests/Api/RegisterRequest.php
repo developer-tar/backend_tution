@@ -2,8 +2,9 @@
 
 namespace App\Http\Requests\Api;
 
+use App\Models\Role;
 use Illuminate\Foundation\Http\FormRequest;
-
+use Illuminate\Validation\Validator;
 class RegisterRequest extends FormRequest
 {
     /**
@@ -21,13 +22,28 @@ class RegisterRequest extends FormRequest
      */
     public function rules(): array
     {
-         return
-        [
-			'first_name' => 'required',
-            'last_name' => 'required',
-			'email' => 'required|email|unique:users',
-            'password'=>'required|min:8|max:10',
-            'choose_the_role' => 'required|integer',
-        ];
+
+        return
+            [
+                'first_name' => 'required',
+                'last_name' => 'required',
+                'email' => 'required|email|unique:users,email',
+                'password' => 'required|min:8|max:10',
+                'choose_the_role' => 'required|integer',
+            ];
     }
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function ($validator) {
+
+            $chosenRole = request()->choose_the_role;
+
+            $adminOrStudent = Role::whereIn('name', [config('constants.roles.ADMIN'), config('constants.roles.STUDENT')])->find(id: $chosenRole);
+
+            if ($chosenRole && $adminOrStudent) {
+                $validator->errors()->add('choose_the_role', "You can't register an admin or student through this URL.");
+            }
+        });
+    }
+
 }

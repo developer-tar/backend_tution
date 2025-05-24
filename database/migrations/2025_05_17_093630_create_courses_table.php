@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('courses', function (Blueprint $table) {
             $table->id();
             $table->foreignId('created_id')->constrained('users')->index();
-            $table->string(column: 'name')->index();
+            $table->string( 'name')->index();
             $table->tinyInteger('type_of_course')->default(config('constants.course_type.WEEKLY'))->index();
             $table->foreignId('feature_id');
             $table->tinyInteger('status')->default(config('constants.statuses.APPROVED'))->nullable()->comment('1= Pending, 2 = Approved 3= Rejected');

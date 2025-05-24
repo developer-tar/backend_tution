@@ -48,21 +48,17 @@ class AuthController extends Controller
             $user = User::create($data);
             if ($user) {
                 $role = $request->choose_the_role;
-
                 $user->roles()->attach($role, ['created_at' => now(), 'updated_at' => now()]);
                 $success['email'] = $user->email;
                 $success['full_name'] = $user->full_name;
                 $success['role'] = $user->roles()->first()?->name;
                 $success['token'] = $user->createToken('accessToken')->accessToken;
-
-
             }
             DB::commit();
 
             return sendResponse($success, 'User has been successfully created.', 201);
         } catch (Exception $e) {
             DB::rollBack();
-            $success['token'] = [];
             Log::error("Failed to register  user. Message => {$e->getMessage()}, File => {$e->getFile()},  Line No => {$e->getLine()}, Error Code => {$e->getCode()}.");
             return sendResponse($success, 'Unable to create a new user.' . $e->getCode(), 500);
         }
@@ -71,28 +67,25 @@ class AuthController extends Controller
     {
         try {
             $credentials = $request->only('email', 'password');
-            $chooseTheRole = $request->filled('choose_the_role');
             if (Auth::attempt($credentials)) {
                 $user = Auth::user();
                 $role = $user->roles()->first();
-
-                if ($role && $chooseTheRole) {
-                    if ($role?->id == $chooseTheRole && $role?->name == config('constants.roles.ADMIN')) {
-                        return sendError('Error', ['error' => 'You are not authorized to login this User.'], 400);
-                    }
+                if (!$role) {
+                    Log::error("Role not found", ['user' => $user]);
+                    return sendError('Unauthorized', ['error' => 'Something went Wrong'], 500);
                 }
-
+                if($role && $request->filled('choose_the_role') && $role?->id != $request->choose_the_role){
+                    return sendError('Unauthorised', ['error' => "Credentails and user role has doesn't match"], 401);
+                } 
                 $status = $user->status;
-
-
                 if ($status == config('constants.statuses.APPROVED')) {
+                
                     $user = [
                         'id' => $user->id,
                         'full_name' => $user->full_name,
                         'email' => $user->email,
-                        'role' => $user->roles()->first()?->name,
-                        'access_token' => $user->createToken('accessToken')->accessToken,
-
+                        'role' => $role?->name,
+                        'access_token' => $user->createToken('accessToken', [$role?->name])->accessToken,
                     ];
                     $response = [
                         'success' => true,
@@ -105,7 +98,7 @@ class AuthController extends Controller
                 }
 
             } else {
-                return sendError('Unauthorised', ['error' => 'Unauthorised'], 401);
+                return sendError('Unauthorized', ['error' => 'Unauthorised'], 401);
             }
         } catch (Exception $e) {
             Log::error("Error occur login. Message => {$e->getMessage()}, File => {$e->getFile()},  Line No => {$e->getLine()}, Error Code => {$e->getCode()}.");

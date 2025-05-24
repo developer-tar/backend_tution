@@ -13,7 +13,6 @@ return [
     | a conventional file to locate the various service credentials.
     |
     */
-
     'postmark' => [
         'token' => env('POSTMARK_TOKEN'),
     ],
@@ -34,5 +33,10 @@ return [
             'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
         ],
     ],
+    'stripe' => [
+        'product_id' => env('PRODUCT_ID'),
+        'sk_test' => env('SK_TEST'),
+        'pk_test' => env('PK_TEST'),
+    ]
 
 ];

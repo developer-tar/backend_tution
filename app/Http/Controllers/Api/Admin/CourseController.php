@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
 
-use App\Http\Requests\StoreCourseRequest;
+use App\Http\Requests\Api\Admin\StoreCourseRequest;
+use App\Jobs\CreateStripePrice;
 use App\Models\Course;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class CourseController extends Controller
 {
@@ -26,76 +28,67 @@ class CourseController extends Controller
         try {
             DB::beginTransaction();
 
-            $course['name'] = $request->name;
-            $course['product_id'] = config('constants.product_id');
-            $course['type_of_course'] = $request->type_of_course;
-            $course['amount'] = $request->amount;
+            $courseData = [
+                'name' => $request->name,
+                'product_id' => config('services.stripe.product_id'),
+                'type_of_course' => 1,
+                'amount' => $request->amount,
+                'created_id' => Auth::id(),
+                'description' => $request->description,
+            ];
 
-
-
-            $stripe = new \Stripe\StripeClient(config('constants.sk_test'));
-            $price = $stripe->prices->create([
-                'currency' => 'usd',
-                'unit_amount' => $course['amount'] * 100,
-                'product' => $course['product_id'],
-            ]);//create the price in stripe 
-            $course['price_id'] = $price->id;
-
-
-            $courseObj = Course::create($course);
+            $courseObj = Course::create($courseData);
 
             if ($request->hasFile('course_image')) {
-                $file = $request->file('course_image');//define the file 
-
-                $path = $file->store('courses', 'public');//image upload local 
-
-                $extension = $file->getClientOriginalExtension();//get the extension
-                
-                $course['course_image'] = 'storage/' . $path;//store the path 
+                $file = $request->file('course_image');
+                $path = $file->store('courses', 'public');
+                $extension = $file->getClientOriginalExtension();
+                $imagePath = 'storage/' . $path;
 
                 $courseObj->media()->create([
-                    'path' => $course['course_image'],
+                    'path' => $imagePath,
                     'type' => getFileType($extension),
-                    'model_name' => Course::class,
-                ]);
-
-            }
-
-
-            $subjectIds = $request->subject_ids; // your subject IDs
-            foreach ($subjectIds as $subjectId) {
-                $courseObj->subjects()->attach($subjectId, [
-                    'created_at' => now(),
-                    'updated_at' => now(),
+                    'model_type' => Course::class,
+                    'model_id' => $courseObj->id,
                 ]);
             }
 
-            $locationIds = $request->location_ids; // your location IDs
-            foreach ($locationIds as $locationId) {
-                $courseObj->locations()->attach($locationId, [
-                    'created_at' => now(),
-                    'updated_at' => now(),
+            $subjectData = collect($request->subject_ids)->mapWithKeys(fn($id) => [
+                $id => ['created_at' => now(), 'updated_at' => now()]
+            ])->toArray();
+            $courseObj->subjects()->attach($subjectData);
+
+            $locationData = collect($request->location_ids)->mapWithKeys(fn($id) => [
+                $id => ['created_at' => now(), 'updated_at' => now()]
+            ])->toArray();
+            $courseObj->locations()->attach($locationData);
+
+            foreach ($request->features_names as $name) {
+                $courseObj->features()->create([
+                    'created_id' => Auth::id(),
+                    'course_id' => $courseObj->id,
+                    'name' => $name
                 ]);
-            }
-
-
-            $featureNames = $request->features_names; //your feature names
-            foreach ($featureNames as $name) {
-                $courseObj->features()->create(['created_id' => Auth::id(), 'course_id' => $courseObj['id'], 'name' => $name]);
             }
 
             $courseObj->acdemicyears()->attach($request->acdemic_year_id, [
                 'created_at' => now(),
                 'updated_at' => now(),
-            ]);//create the acdemic years
+            ]);
 
             DB::commit();
-            return sendResponse($user, 'Course created successfully.', 201);
+
+            // Dispatch stripe creation as a queued job
+            dispatch(new CreateStripePrice($courseObj->id, $courseObj->amount));
+
+            return sendResponse( 'Course created successfully.', 201);
+
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error("Failed to show user. Message => {$e->getMessage()}, File => {$e->getFile()},  Line No => {$e->getLine()}, Error Code => {$e->getCode()}.");
+            Log::error("Failed to create course. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
             return sendError('error', ['error' => 'An error occurred during store.'], 500);
         }
+
 
     }
 }

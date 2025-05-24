@@ -2,8 +2,9 @@
 
 namespace App\Http\Requests\Api;
 
+use App\Rules\ValidRoleLogin;
 use Illuminate\Foundation\Http\FormRequest;
-
+use App\Rules\ValidRole;
 class LoginRequest extends FormRequest
 {
     /**
@@ -11,6 +12,7 @@ class LoginRequest extends FormRequest
      */
     public function authorize(): bool
     {
+
         return true;
     }
 
@@ -21,11 +23,12 @@ class LoginRequest extends FormRequest
      */
     public function rules(): array
     {
-       return
-        [
-			'email' => 'required|email|exists:users,email',
-			'password' => 'required|min:8|max:10',
-            'choose_the_role' => 'required|integer',
-        ];
+
+        return
+            [
+                'email' => 'required|email|exists:users,email',
+                'password' => 'required|min:8|max:10',
+                'choose_the_role' => ['required', 'integer', new ValidRoleLogin()],
+            ];
     }
 }

@@ -10,7 +10,7 @@ class Media extends Model
         'path',
         'type',
         'model_id',
-        'model_name',
+        'model_type',
     ];
     public function model()
     {

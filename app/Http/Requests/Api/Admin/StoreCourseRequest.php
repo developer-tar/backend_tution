@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Requests;
+namespace App\Http\Requests\Api\Admin;
 
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -8,15 +8,14 @@ class StoreCourseRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true; // Change to authorization logic if needed
+        return true;
     }
 
     public function rules(): array
     {
         return [
-            'name' => ['required', 'string', 'max:255'],
-            'type_of_course' => ['required', 'string'],
-            'amount' => ['required', 'numeric', 'min:0'],
+            'name' => ['required', 'string', 'max:100', 'unique:courses,name'],
+            'amount' => ['required', 'numeric', 'regex:/^\d{1,6}(\.\d{1,2})?$/'],
 
             'subject_ids' => ['required', 'array'],
             'subject_ids.*' => ['integer', 'exists:subjects,id'],
@@ -25,17 +24,19 @@ class StoreCourseRequest extends FormRequest
             'location_ids.*' => ['integer', 'exists:locations,id'],
 
             'features_names' => ['required', 'array'],
-            'features_names.*' => ['string', 'max:255'],
+            'features_names.*' => ['string', 'min:50', 'max:500'],
 
-            'acdemic_year_id' => ['required', 'integer', 'exists:academic_years,id'],
-            'course_image' => ['nullable', 'image', 'max:2048'],
+            'acdemic_year_id' => ['required', 'integer', 'exists:acdemic_years,id'],
+            'course_image' => ['required', 'image', 'max:2048'],
+            'description' => ['required', 'string', 'min:500', 'max:10000'], // Fixed typo "requrired"
         ];
     }
+
     public function messages(): array
-{
-    return [
-        'subject_ids.*.exists' => 'One or more selected subjects are invalid.',
-        'features_names.*.string' => 'Each feature name must be a valid string.',
-    ];
-}
+    {
+        return [
+            'subject_ids.*.exists' => 'One or more selected subjects are invalid.',
+            'features_names.*.string' => 'Each feature name must be a valid string.',
+        ];
+    }
 }

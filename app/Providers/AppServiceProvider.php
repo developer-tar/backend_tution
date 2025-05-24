@@ -13,7 +13,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        Passport::ignoreRoutes();
+        
     }
 
     /**
@@ -22,5 +22,12 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         date_default_timezone_set('Europe/London');
+        Passport::tokensCan([
+            'Admin' => 'Administrator role',
+            'Student' => 'Student role',
+            'Tutor' => 'Tutor role',
+            'Parent' => 'Parent role',
+        ]);
+        Passport::ignoreRoutes();
     }
 }

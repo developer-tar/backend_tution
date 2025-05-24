@@ -14,6 +14,7 @@ class Course extends Model
         'status',
         'product_id',
         'price_id',
+        'description'
     ];
     public function subjects()
     {
@@ -21,11 +22,11 @@ class Course extends Model
     }
     public function locations()
     {
-        return $this->belongsToMany(Location::class, 'course_location', 'course_id', 'subject_id');
+        return $this->belongsToMany(Location::class, 'course_location', 'course_id', 'location_id');
     }
     public function features()
     {
-        return $this->hasMany(Feature::class, 'couse_id', 'id');
+        return $this->hasMany(Feature::class, 'course_id', 'id');
     }
     public function acdemicyears()
     {
