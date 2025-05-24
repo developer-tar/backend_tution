@@ -31,7 +31,7 @@ class CourseController extends Controller
             $courseData = [
                 'name' => $request->name,
                 'product_id' => config('services.stripe.product_id'),
-                'type_of_course' => 1,
+                'type_of_course' => config('constants.course_type.WEEKLY'),
                 'amount' => $request->amount,
                 'created_id' => Auth::id(),
                 'description' => $request->description,
@@ -53,6 +53,11 @@ class CourseController extends Controller
                 $id => ['created_at' => now(), 'updated_at' => now()]
             ])->toArray();
             $courseObj->locations()->attach($locationData);
+
+            $modeData = collect($request->type_of_modes)->mapWithKeys(fn($id) => [
+                $id => ['created_at' => now(), 'updated_at' => now()]
+            ])->toArray();
+            $courseObj->modes()->attach($modeData);
 
             foreach ($request->features_names as $name) {
                 $courseObj->features()->create([

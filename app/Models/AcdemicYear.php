@@ -21,4 +21,5 @@ class AcdemicYear extends Model
 
         return $this->start_year . '/' . $this->end_year;
     }
+   
 }

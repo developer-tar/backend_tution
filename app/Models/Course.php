@@ -7,7 +7,7 @@ use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 class Course extends Model implements HasMedia
 {
-     use InteractsWithMedia;
+    use InteractsWithMedia;
     protected $fillable = [
         'created_id',
         'name',
@@ -34,9 +34,9 @@ class Course extends Model implements HasMedia
     {
         return $this->belongsToMany(AcdemicYear::class, 'acdemic_course', 'course_id', 'acdemic_id');
     }
-    // public function media()
-    // {
-    //     return $this->morphMany(Media::class, 'model');
-    // }
+    public function modes()
+    {
+        return $this->belongsToMany(Mode::class, 'mode_user', 'course_id', 'mode_id');
+    }
 
 }

@@ -1,0 +1,135 @@
+<?php
+
+namespace App\Http\Controllers\Api\Admin;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\Admin\FetchWeeksRequest;
+use App\Http\Requests\Api\Admin\StoreAssigmentRequest;
+
+use App\Models\Course;
+use App\Models\CourseAssignment;
+use App\Models\Week;
+
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+class AssignmentController extends Controller
+{
+    /**
+     * Store a newly created resource in storage.
+     *
+     * @param  StoreAssigmentRequest  $request
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function store(StoreAssigmentRequest $request)
+    {
+        try {
+            $assignments = collect($request->week_ids)->map(function ($weekId) use ($request) {
+                return [
+                    'week_id' => $weekId,
+                    'acdemic_course_id' => $request->acdemic_course_id,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+            })->toArray();
+
+            CourseAssignment::insert($assignments); // Faster than multiple create()
+
+            return sendResponse('Course date assign  for contents created successfully.', 201);
+
+        } catch (\Exception $e) {
+            Log::error("Failed to create course assignment. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
+            return sendError('error', ['error' => 'An error occurred during store.'], 500);
+        }
+    }
+
+    public function courseAcdemicRecords()
+    {
+        try {
+            $courses = Course::with([
+                'acdemicyears' => function ($query) {
+                    $query->withPivot('id');
+                }
+            ])->get();
+
+            $results = [];
+
+            foreach ($courses as $course) {
+                foreach ($course->acdemicyears as $year) {
+                    $results[] = [
+                        'id' => $year->pivot->id,
+                        'name' => "{$course->name} - {$year->start_end_year}",
+                    ];
+                }
+            }
+            if (empty($results)) {
+                $message = 'No records found.';
+
+            } else {
+                $message = 'Fetched Successfully!!';
+            }
+            $response = [
+                'success' => true,
+                'data' => $results,
+                'message' => $message,
+            ];
+            return response()->json($response, 200);
+        } catch (\Exception $e) {
+            Log::error("Failed to fetch course acdemic records. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
+            return sendError('error', ['error' => 'An error occurred during store.'], 500);
+        }
+    }
+    public function courseAcdemicBasedWeeks(FetchWeeksRequest $request)
+    {
+        try {
+            $data = collect();
+
+            // Get the academic year ID from the acdemic_course table
+            $academicCourse = DB::table('acdemic_course')
+                ->select('acdemic_id')
+                ->where('id', $request->acdemic_course_id)
+                ->first();
+
+            if (!$academicCourse) {
+                return response()->json([
+                    'success' => true,
+                    'data' => [],
+                    'message' => 'No academic course found.',
+                ]);
+            }
+
+            $assignedWeekIds = CourseAssignment::where('acdemic_course_id', $request->acdemic_course_id)
+                ->pluck('week_id')
+                ->toArray();
+
+            // Get unassigned weeks for the academic year
+            $weeks = Week::select('start_date', 'end_date', 'week_number', 'id')
+                ->where('academic_year_id', $academicCourse->acdemic_id)
+                ->when(!empty($assignedWeekIds), function ($query) use ($assignedWeekIds) {
+                    return $query->whereNotIn('id', $assignedWeekIds);
+                })
+                ->get();
+
+            $data = $weeks->map(function ($week) {
+                return [
+                    'id' => $week->id,
+                    'name' => "{$week->week_number} - " .
+                        \Carbon\Carbon::parse($week->start_date)->format('d M') .
+                        " to " .
+                        \Carbon\Carbon::parse($week->end_date)->format('d M'),
+                ];
+            });
+
+            $message = $data->isEmpty() ? 'No record found' : 'Fetched Successfully!!';
+
+            return response()->json([
+                'success' => true,
+                'data' => $data,
+                'message' => $message,
+            ], 200);
+
+        } catch (\Exception $e) {
+            Log::error("Failed to fetch weeks record. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
+            return sendError('error', ['error' => 'An error occurred during fetch.'], 500);
+        }
+    }
+}

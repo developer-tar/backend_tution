@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Api\Admin\Assignment;
+use App\Http\Controllers\Api\Admin\AssignmentController;
 use App\Http\Controllers\Api\Admin\CourseController;
 use App\Http\Controllers\Api\AuthController;
 use Illuminate\Support\Facades\Route;
@@ -18,5 +20,6 @@ use App\Http\Controllers\FleetsController;
 |
 */
 Route::resource('course', CourseController::class);
-
-
+Route::resource('assignment', AssignmentController::class);
+Route::get('course_acdemic_records', [AssignmentController::class, 'courseAcdemicRecords']);
+Route::get('course_acdemic_based_weeks/{acdemic_course_id}', [AssignmentController::class, 'courseAcdemicBasedWeeks']);

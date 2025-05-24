@@ -20,6 +20,9 @@ class StoreCourseRequest extends FormRequest
             'subject_ids' => ['required', 'array'],
             'subject_ids.*' => ['integer', 'exists:subjects,id'],
 
+            'type_of_modes' => ['required', 'array'],
+            'type_of_modes.*' => ['integer', 'exists:modes,id'],
+
             'location_ids' => ['required', 'array'],
             'location_ids.*' => ['integer', 'exists:locations,id'],
 
