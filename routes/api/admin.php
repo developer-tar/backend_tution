@@ -34,9 +34,11 @@ Route::resource('assign/topic/subtopic', TopicSubTopicController::class);
 //end assigning the topic and subtopic based on the weeks routing
 
 
-//start assigning the test for course content routing 
+//start assigning the test for course content routing. 
 Route::resource('assign/test', CourseContentTestController::class);
-//end assigning the test for course content routing 
+Route::get('fetch/course/topic/{subject_id}/{course_assignment_id}', [CourseContentTestController::class, 'fetchTopic']);
+Route::get('fetch/course/subtopic/{topic_id}', [CourseContentTestController::class, 'fetchSubTopic']);
+//end assigning the test for course content routing.
 
 Route::get('ca_records', [AssignmentController::class, 'courseAcdemicRecords']);
 

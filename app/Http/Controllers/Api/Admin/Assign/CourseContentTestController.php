@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Admin\Assign;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\Admin\StoreTestRequest;
 use App\Http\Requests\Api\Admin\StoreTopicSubTopicRequest;
 
 use App\Models\CourseSubTopic;
@@ -16,11 +17,12 @@ class CourseContentTestController extends Controller
     /**
      * Store a newly created resource in storage.
      *
-     * @param  StoreTopicSubTopicRequest  $request
+     * @param  StoreTestRequest  $request
      * @return \Illuminate\Http\RedirectResponse
      */
-    public function store(StoreTopicSubTopicRequest $request)
+    public function store(StoreTestRequest $request)
     {
+        dd($request->all());
         try {
             DB::beginTransaction();
 
@@ -73,6 +75,62 @@ class CourseContentTestController extends Controller
             $response = [
                 'success' => false,
                 'message' => "An error occurred during store",
+            ];
+            return response()->json($response, 500);
+        }
+    }
+    public function fetchTopic($subject_id, $course_assignment_id)
+    {
+        try {
+            $data = CourseTopic::select('id', 'name')->where(['subject_id' => $subject_id, 'course_assignment_id' => $course_assignment_id])->get();
+            if ($data->isNotEmpty()) {
+                $response = [
+                    'success' => true,
+                    "data" => $data,
+                    'message' => "Fetched successfully",
+                ];
+            } else {
+                $response = [
+                    'success' => true,
+                    'message' => "No Course Topic found",
+                ];
+            }
+
+            return response()->json($response, 200);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error("Failed to fetch the course. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
+            $response = [
+                'success' => false,
+                'message' => "An error occurred during fetch",
+            ];
+            return response()->json($response, 500);
+        }
+    }
+    public function fetchSubTopic($topic_id)
+    {
+        try {
+            $data = CourseSubTopic::select('id', 'name')->where('course_topic_id', $topic_id)->get();
+            if ($data->isNotEmpty()) {
+                $response = [
+                    'success' => true,
+                    "data" => $data,
+                    'message' => "Fetched successfully",
+                ];
+            } else {
+                $response = [
+                    'success' => true,
+                    'message' => "No Course SubTopic found",
+                ];
+            }
+
+            return response()->json($response, 200);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error("Failed to fetch subtopic. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
+            $response = [
+                'success' => false,
+                'message' => "An error occurred during fetch",
             ];
             return response()->json($response, 500);
         }

@@ -13,5 +13,7 @@ class CourseTopic extends Model implements HasMedia
         'subject_id',
         'name'
      ];
-     
+     public function subtopic(){
+      return $this->hasMany(CourseSubTopic::class,'course_topic_id', 'id');
+     }
 }
