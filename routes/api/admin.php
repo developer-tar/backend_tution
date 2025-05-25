@@ -1,14 +1,12 @@
 <?php
 
-use App\Http\Controllers\Api\Admin\Assignment;
-use App\Http\Controllers\Api\Admin\AssignmentController;
-use App\Http\Controllers\Api\Admin\CourseController;
-use App\Http\Controllers\Api\Admin\TopicSubTopicController;
-use App\Http\Controllers\Api\AuthController;
+
+use App\Http\Controllers\Api\Admin\Assign\AssignmentController;
+use App\Http\Controllers\Api\Admin\Assign\CourseContentTestController;
+use App\Http\Controllers\Api\Admin\Assign\CourseController;
+use App\Http\Controllers\Api\Admin\Assign\TopicSubTopicController;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\UsersController;
-use App\Http\Controllers\LoginController;
-use App\Http\Controllers\FleetsController;
+
 
 /*
 |--------------------------------------------------------------------------
@@ -35,6 +33,10 @@ Route::get('ca_based_weeks_subjects/{acdemic_course_id}', [AssignmentController:
 Route::resource('assign/topic/subtopic', TopicSubTopicController::class);
 //end assigning the topic and subtopic based on the weeks routing
 
+
+//start assigning the test for course content routing 
+Route::resource('assign/test', CourseContentTestController::class);
+//end assigning the test for course content routing 
 
 Route::get('ca_records', [AssignmentController::class, 'courseAcdemicRecords']);
 

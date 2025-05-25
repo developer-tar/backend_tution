@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Api\Admin;
+namespace App\Http\Controllers\Api\Admin\Assign;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\Admin\FetchWeeksRequest;
