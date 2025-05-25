@@ -3,8 +3,15 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-
-class CourseTopic extends Model
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
+class CourseTopic extends Model implements HasMedia
 {
-    //
+     use InteractsWithMedia;
+     protected $fillable = [
+        'course_assignment_id',
+        'subject_id',
+        'name'
+     ];
+     
 }

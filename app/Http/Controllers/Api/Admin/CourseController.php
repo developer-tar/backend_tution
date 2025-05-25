@@ -10,7 +10,7 @@ use App\Models\Course;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-
+use Illuminate\Support\Str;
 class CourseController extends Controller
 {
     public function index()
@@ -35,13 +35,16 @@ class CourseController extends Controller
                 'amount' => $request->amount,
                 'created_id' => Auth::id(),
                 'description' => $request->description,
+                'slug' => Str::slug($request->name),
             ];
 
             $courseObj = Course::create($courseData);
 
             if ($request->hasFile('course_image')) {
-                $courseObj->addMediaFromRequest('course_image')
-                    ->toMediaCollection('course_image', 'public');
+                foreach ($request->file('course_image') as $file) {
+                    $courseObj->addMedia($file)
+                        ->toMediaCollection('course_image', 'public');
+                }
             }
 
             $subjectData = collect($request->subject_ids)->mapWithKeys(fn($id) => [

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\Admin\FetchWeeksRequest;
 use App\Http\Requests\Api\Admin\StoreAssigmentRequest;
 
+use App\Models\AcdemicCourse;
 use App\Models\Course;
 use App\Models\CourseAssignment;
 use App\Models\Week;
@@ -33,8 +34,7 @@ class AssignmentController extends Controller
             })->toArray();
 
             CourseAssignment::insert($assignments); // Faster than multiple create()
-
-            return sendResponse('Course date assign  for contents created successfully.', 201);
+            return response()->json('Course date assign  for contents created successfully.',201);
 
         } catch (\Exception $e) {
             Log::error("Failed to create course assignment. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
@@ -78,7 +78,7 @@ class AssignmentController extends Controller
             return sendError('error', ['error' => 'An error occurred during store.'], 500);
         }
     }
-    public function courseAcdemicBasedWeeks(FetchWeeksRequest $request)
+    public function courseAcdemicBasedRemainingWeeks(FetchWeeksRequest $request)
     {
         try {
             $data = collect();
@@ -118,6 +118,81 @@ class AssignmentController extends Controller
                         \Carbon\Carbon::parse($week->end_date)->format('d M'),
                 ];
             });
+
+            $message = $data->isEmpty() ? 'No record found' : 'Fetched Successfully!!';
+
+            return response()->json([
+                'success' => true,
+                'data' => $data,
+                'message' => $message,
+            ], 200);
+
+        } catch (\Exception $e) {
+            Log::error("Failed to fetch weeks record. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
+            return sendError('error', ['error' => 'An error occurred during fetch.'], 500);
+        }
+    }
+    public function courseAcdemicBasedWeeks(FetchWeeksRequest $request)
+    {
+        try {
+            $data = collect();
+
+            // Get the academic year ID from the acdemic_course table
+            $academicCourse = DB::table('acdemic_course')
+                ->select('acdemic_id')
+                ->where('id', $request->acdemic_course_id)
+                ->first();
+
+            if (!$academicCourse) {
+                return response()->json([
+                    'success' => true,
+                    'data' => [],
+                    'message' => 'No academic course found.',
+                ]);
+            }
+
+            $subjects = AcdemicCourse::with('courses:id', 'courses.subjects:id,name')->where('id', $request->acdemic_course_id)->select('id', 'course_id')->get();
+
+            $assignments = CourseAssignment::with('weeks:id,start_date,end_date,week_number')->where('acdemic_course_id', $request->acdemic_course_id)->select('id', 'week_id')->get();
+
+            if ($assignments->isEmpty()) {
+                return response()->json([
+                    'success' => true,
+                    'data' => [],
+                    'message' => 'No course assignment week assign  yet.',
+                ]);
+            }
+
+            if ($subjects->isEmpty()) {
+                return response()->json([
+                    'success' => true,
+                    'data' => [],
+                    'message' => 'No course subject assign yet',
+                ]);
+            }
+            
+            $data['subjects'] = $subjects->flatMap(function ($item) {
+                $courseSubjects = $item['courses']['subjects'];
+                return $courseSubjects->map(function ($subject) {
+                    return [
+                        'id' => $subject['id'],
+                        'name' => $subject['name'],
+                    ];
+                });
+            })->values();
+
+            $data['assignments'] = $assignments->map(function ($assignment) {
+                $week = $assignment['weeks'];
+
+                return [
+                    'id' => $assignment['id'],
+                    'name' => "{$week['week_number']} - " .
+                        \Carbon\Carbon::parse($week['start_date'])->format('d M') .
+                        " to " .
+                        \Carbon\Carbon::parse($week['end_date'])->format('d M'),
+                ];
+            });
+
 
             $message = $data->isEmpty() ? 'No record found' : 'Fetched Successfully!!';
 

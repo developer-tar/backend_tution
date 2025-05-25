@@ -10,4 +10,8 @@ class CourseAssignment extends Model
         'week_id',
         'acdemic_course_id'
     ];
+    
+    public  function weeks(){
+        return $this->belongsTo(Week::class, 'week_id','id');
+    }
 }

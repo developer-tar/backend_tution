@@ -16,7 +16,8 @@ class Course extends Model implements HasMedia
         'status',
         'product_id',
         'price_id',
-        'description'
+        'description',
+        'slug',
     ];
     public function subjects()
     {
