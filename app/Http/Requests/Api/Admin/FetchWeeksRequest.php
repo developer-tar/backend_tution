@@ -30,7 +30,7 @@ class FetchWeeksRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'acdemic_course_id' => ['required', 'integer'],
+            'acdemic_course_id' => ['required', 'integer', 'exists:acdemic_course,id'],
         ];
     }
 }

@@ -13,37 +13,48 @@ use App\Models\Week;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-class AssignmentController extends Controller
-{
+
+class AssignmentController extends Controller {
     /**
      * Store a newly created resource in storage.
      *
      * @param  StoreAssigmentRequest  $request
      * @return \Illuminate\Http\RedirectResponse
      */
-    public function store(StoreAssigmentRequest $request)
-    {
+    public function store(StoreAssigmentRequest $request) {
         try {
-            $assignments = collect($request->week_ids)->map(function ($weekId) use ($request) {
-                return [
-                    'week_id' => $weekId,
-                    'acdemic_course_id' => $request->acdemic_course_id,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ];
-            })->toArray();
+            $existing = CourseAssignment::where('acdemic_course_id', $request->acdemic_course_id)
+                ->whereIn('week_id', $request->week_ids)
+                ->pluck('week_id')
+                ->toArray();
 
-            CourseAssignment::insert($assignments); // Faster than multiple create()
-            return response()->json('Course date assign  for contents created successfully.',201);
+            $newAssignments = collect($request->week_ids)
+                ->reject(fn($weekId) => in_array($weekId, $existing))
+                ->map(function ($weekId) use ($request) {
+                    return [
+                        'week_id' => $weekId,
+                        'acdemic_course_id' => $request->acdemic_course_id,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ];
+                })->values()->toArray();
 
+            if (!empty($newAssignments)) {
+                CourseAssignment::insert($newAssignments);
+            }
+
+            $response = [
+                'success' => true,
+                'message' => 'Course date assign  for contents created successfully.',
+            ];
+            return response()->json($response, 201);
         } catch (\Exception $e) {
             Log::error("Failed to create course assignment. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
             return sendError('error', ['error' => 'An error occurred during store.'], 500);
         }
     }
 
-    public function courseAcdemicRecords()
-    {
+    public function courseAcdemicRecords() {
         try {
             $courses = Course::with([
                 'acdemicyears' => function ($query) {
@@ -63,7 +74,6 @@ class AssignmentController extends Controller
             }
             if (empty($results)) {
                 $message = 'No records found.';
-
             } else {
                 $message = 'Fetched Successfully!!';
             }
@@ -78,22 +88,19 @@ class AssignmentController extends Controller
             return sendError('error', ['error' => 'An error occurred during store.'], 500);
         }
     }
-    public function courseAcdemicBasedRemainingWeeks(FetchWeeksRequest $request)
-    {
+    public function courseAcdemicBasedRemainingWeeks(FetchWeeksRequest $request) {
         try {
             $data = collect();
 
             // Get the academic year ID from the acdemic_course table
-            $academicCourse = DB::table('acdemic_course')
-                ->select('acdemic_id')
-                ->where('id', $request->acdemic_course_id)
-                ->first();
+            $academicCourse = AcdemicCourse::select('acdemic_id')
+                ->find($request->input('acdemic_course_id'));
 
             if (!$academicCourse) {
                 return response()->json([
                     'success' => true,
                     'data' => [],
-                    'message' => 'No academic course found.',
+                    'message' => 'No academic course record found.',
                 ]);
             }
 
@@ -126,14 +133,12 @@ class AssignmentController extends Controller
                 'data' => $data,
                 'message' => $message,
             ], 200);
-
         } catch (\Exception $e) {
             Log::error("Failed to fetch weeks record. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
             return sendError('error', ['error' => 'An error occurred during fetch.'], 500);
         }
     }
-    public function courseAcdemicBasedWeeks(FetchWeeksRequest $request)
-    {
+    public function courseAcdemicBasedWeeks(FetchWeeksRequest $request) {
         try {
             $data = collect();
 
@@ -170,7 +175,7 @@ class AssignmentController extends Controller
                     'message' => 'No course subject assign yet',
                 ]);
             }
-            
+
             $data['subjects'] = $subjects->flatMap(function ($item) {
                 $courseSubjects = $item['courses']['subjects'];
                 return $courseSubjects->map(function ($subject) {
@@ -201,7 +206,6 @@ class AssignmentController extends Controller
                 'data' => $data,
                 'message' => $message,
             ], 200);
-
         } catch (\Exception $e) {
             Log::error("Failed to fetch weeks record. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
             return sendError('error', ['error' => 'An error occurred during fetch.'], 500);
