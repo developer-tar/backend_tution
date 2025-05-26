@@ -16,7 +16,7 @@ class StoreTestRequest extends FormRequest
     {
         return [
             'topic_id'              => ['required', 'integer', 'exists:course_topics,id'],
-            'subtopic_id'           => ['required', 'integer', 'exists:course_sub_topics,id'],
+            'subtopic_id'           => ['nullable', 'integer', 'exists:course_sub_topics,id'],
 
             'questions'             => ['required', 'array'],
             'questions.*'           => ['required', 'string', 'min:10', 'max:255'],

@@ -38,7 +38,7 @@ class CourseContentTestController extends Controller {
             $testObj = CourseTest::firstOrCreate(
                 [
                     'course_topic_id' => $request->input('topic_id'),
-                    'course_sub_topic_id' => $request->input('subtopic_id'),
+                    'course_sub_topic_id' => $request->filled('subtopic_id') ? $request->input('subtopic_id'): null,
                     'name' =>  $name . "-Test ",
                 ]
             );
