@@ -41,10 +41,8 @@ class CourseController extends Controller
             $courseObj = Course::create($courseData);
 
             if ($request->hasFile('course_image')) {
-                foreach ($request->file('course_image') as $file) {
-                    $courseObj->addMedia($file)
-                        ->toMediaCollection('course_image', 'public');
-                }
+                    $courseObj->addMedia($request->file('course_image'))
+                        ->toMediaCollection('course_image');
             }
 
             $subjectData = collect($request->subject_ids)->mapWithKeys(fn($id) => [
