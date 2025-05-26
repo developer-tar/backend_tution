@@ -6,5 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class CourseAnswer extends Model
 {
-    //
+    protected $fillable =  [
+        'course_option_id',
+    ];
 }

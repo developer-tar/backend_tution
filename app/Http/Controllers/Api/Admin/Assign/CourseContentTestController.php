@@ -5,73 +5,77 @@ namespace App\Http\Controllers\Api\Admin\Assign;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\Admin\StoreTestRequest;
 use App\Http\Requests\Api\Admin\StoreTopicSubTopicRequest;
-
+use App\Models\CourseAnswer;
+use App\Models\CourseOption;
+use App\Models\CourseQuestion;
 use App\Models\CourseSubTopic;
+use App\Models\CourseTest;
 use App\Models\CourseTopic;
 
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-class CourseContentTestController extends Controller
-{
+
+class CourseContentTestController extends Controller {
     /**
      * Store a newly created resource in storage.
      *
      * @param  StoreTestRequest  $request
      * @return \Illuminate\Http\RedirectResponse
      */
-    public function store(StoreTestRequest $request)
-    {
-        dd($request->all());
+    public function store(StoreTestRequest $request) {
+       
         try {
             DB::beginTransaction();
 
-            $courseTopic = CourseTopic::firstOrCreate(
+            $query = CourseTopic::select('name')->findOrFail($request->input('topic_id'));
+            $name = $query['name'];
+            if ($request->filled('subtopic_id')) {
+                $query = CourseSubTopic::select('name')->findOrFail($request->input('subtopic_id'));
+                $name = $query['name'];
+            }
+
+            $testObj = CourseTest::firstOrCreate(
                 [
-                    'course_assignment_id' => $request->input('course_assigment_id'),
-                    'subject_id' => $request->input('subject_id'),
-                    'name' => $request->input('topic_name'),
+                    'course_topic_id' => $request->input('topic_id'),
+                    'course_sub_topic_id' => $request->input('subtopic_id'),
+                    'name' =>  $name . "-Test ",
                 ]
             );
-
-            $targetModel = $courseTopic;
-            $isSubtopic = '';
-
-            if ($request->filled('subtopic_name')) {
-                $courseSubTopic = CourseSubTopic::firstOrCreate([
-                    'course_topic_id' => $courseTopic->id,
-                    'name' => $request->input('subtopic_name'),
-                ]);
-
-                $targetModel = $courseSubTopic;
-                $isSubtopic = 'subtopic';
-            }
-
-            if ($request->hasFile('content_upload')) {
-                // Check if any media exists already for this model in the 'content_upload' collection
-                if ($targetModel->media()->where('collection_name', 'content_upload')->exists()) {
-                    return response()->json(['message' => 'Content already uploaded for this topic/subtopic.'], 200);
-                }
-
-                foreach ($request->file('content_upload') as $file) {
-                    $targetModel->addMedia($file)
-                        ->toMediaCollection('content_upload', 'public');
+            foreach ($request->input('questions') as $key => $question) {
+                $questionObj = CourseQuestion::firstOrCreate(
+                    [
+                        'course_test_id' => $testObj?->id,
+                        'name' => $question,
+                        'duration_in_sec' => $request->input('duration_in_sec')[$key]
+                    ]
+                );
+                foreach ($request->input('options')[$key] as $option) {
+                    $optionObj = CourseOption::firstOrCreate(
+                        [
+                            'course_question_id' => $questionObj?->id,
+                            'name' => $option,
+                        ]
+                    );
+                    if ($optionObj?->name == $request->input('answers')[$key])
+                        CourseAnswer::firstOrCreate(
+                            [
+                                'course_option_id' => $optionObj?->id,
+                            ]
+                        );
                 }
             }
-
-
+    
             DB::commit();
 
             $response = [
                 'success' => true,
-                'message' => "Course topic  $isSubtopic created successfully",
+                'message' => "Test has created successfully",
             ];
             return response()->json($response, 200);
-
-
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error("Failed to create topic and subtopic for course. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
+            Log::error("Failed to create test for course. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
             $response = [
                 'success' => false,
                 'message' => "An error occurred during store",
@@ -79,8 +83,7 @@ class CourseContentTestController extends Controller
             return response()->json($response, 500);
         }
     }
-    public function fetchTopic($subject_id, $course_assignment_id)
-    {
+    public function fetchTopic($subject_id, $course_assignment_id) {
         try {
             $data = CourseTopic::select('id', 'name')->where(['subject_id' => $subject_id, 'course_assignment_id' => $course_assignment_id])->get();
             if ($data->isNotEmpty()) {
@@ -107,8 +110,7 @@ class CourseContentTestController extends Controller
             return response()->json($response, 500);
         }
     }
-    public function fetchSubTopic($topic_id)
-    {
+    public function fetchSubTopic($topic_id) {
         try {
             $data = CourseSubTopic::select('id', 'name')->where('course_topic_id', $topic_id)->get();
             if ($data->isNotEmpty()) {
