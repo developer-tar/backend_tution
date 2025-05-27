@@ -13,8 +13,15 @@ return new class extends Migration
     {
         Schema::create('days', function (Blueprint $table) {
             $table->id();
+            $table->string('name', 2)->unique();
+            $table->tinyInteger('status')->default(config('constants.statuses.APPROVED'))->comment('1= Pending, 2 = Approved 3= Rejected');
+            $table->softDeletes();
             $table->timestamps();
         });
+        \Artisan::call('db:seed', [
+            '--class' => 'DaysTableSeeder',
+            '--force' => true,
+        ]);
     }
 
     /**

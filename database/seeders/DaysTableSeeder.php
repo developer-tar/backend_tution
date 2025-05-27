@@ -2,16 +2,16 @@
 
 namespace Database\Seeders;
 
+use App\Models\Day;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
-class DaysTableSeeder extends Seeder
-{
-    public function run(): void
-    {
+class DaysTableSeeder extends Seeder {
+    public function run(): void {
         for ($day = 1; $day <= 31; $day++) {
-            DB::table('days')->insert([
-                'day' => $day,
+
+            Day::firstOrCreate([
+                'name' => sprintf('%02d', $day),
             ]);
         }
     }

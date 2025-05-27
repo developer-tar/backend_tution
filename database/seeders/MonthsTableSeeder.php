@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\Month;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
@@ -9,16 +10,13 @@ class MonthsTableSeeder extends Seeder
 {
     public function run(): void
     {
-        $months = [
-            'January', 'February', 'March', 'April', 'May', 'June',
-            'July', 'August', 'September', 'October', 'November', 'December'
-        ];
+        $months = config('constants.months');
 
-        foreach ($months as $index => $month) {
-            DB::table('months')->insert([
+        foreach ($months as  $month) {
+            Month::firstOrCreate([
                 'name' => $month,
-                'number' => $index + 1, // 1 for January, 12 for December
             ]);
+         
         }
     }
 }

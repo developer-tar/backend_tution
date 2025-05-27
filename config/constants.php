@@ -59,6 +59,53 @@ return [
     'modes' => [
         'in_person' => 'In person',
         'online' => 'Online',
-    ]
-]
-    ?>
+    ],
+    'months' => [
+        'January',
+        'February',
+        'March',
+        'April',
+        'May',
+        'June',
+        'July',
+        'August',
+        'September',
+        'October',
+        'November',
+        'December',
+    ],
+    'regions' => [
+        'Berkshire',
+        'Bexley and Bromley',
+        'Birmingham, Walsall, Wolverhamption and Wrekin (West Midlands)',
+        'Buckinghamshire',
+        'Devon',
+        'Dorset',
+        'Essex',
+        'Essex-Redbridge',
+        'Gloucestershire',
+        'Hertfordshire (Other and North London)',
+        'Hertfordshire (South West)',
+        'Kent',
+        'Lancashire & Cumbria',
+        'Lincolnshire',
+        'Medway',
+        'Northern Ireland',
+        'Surrey (Sutton, Kingston and Wandsworth)',
+        'Trafford',
+        'Warwickshire',
+        'Wiltshire',
+        'Wirral',
+        'Yorkshire',
+    ],
+    'genders' => [
+        'male',
+        'female',
+        'Prefer not to say'
+    ],
+    'target_schools' => [
+        'Both',
+        'Grammer',
+        'Independent',
+    ],
+];
