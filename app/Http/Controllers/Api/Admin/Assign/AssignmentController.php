@@ -14,14 +14,48 @@ use App\Models\Week;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
-class AssignmentController extends Controller {
+class AssignmentController extends Controller
+{
     /**
      * Store a newly created resource in storage.
      *
      * @param  StoreAssigmentRequest  $request
      * @return \Illuminate\Http\RedirectResponse
      */
-    public function store(StoreAssigmentRequest $request) {
+    public function index()
+    {
+        try {
+
+            $courseAssignment = CourseAssignment::with('weeks', 'acdemicCourses.courses', 'acdemicCourses.acdemicyears')
+                ->whereHas('acdemicCourses.courses', function ($query) {
+                    $query->where('created_id', auth()->id());
+                })
+                ->orderBy('created_at', 'desc')
+                ->get()
+                ->transform(function ($assignment) {
+           
+                    return [
+                        'acdemicyear' => $assignment?->acdemicyears?->first() ? $assignment?->acdemicyears?->first()->start_end_year : null,
+                        'course_name' => $assignment?->acdemicCourses?->courses?->name ?? null,
+                        'course_slug' => $assignment?->acdemicCourses?->courses?->slug ?? null,
+                        'week_number' => $assignment?->weeks?->first() ? $assignment?->weeks->first()?->week_number : null,
+                        'available_weeks' => $assignment?->weeks?->first() ? $assignment?->weeks?->first()?->start_end_date : null,
+                    ];
+                });
+            $response = [
+                'success' => true,
+                'message' => 'Courses fetched successfully.',
+                'data' => $courseAssignment,
+
+            ];
+            return response()->json($response, 200);
+        } catch (\Exception $e) {
+            Log::error("Failed to fetch assignments. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
+            return sendError('error', ['error' => 'An error occurred during fetch.'], 500);
+        }
+    }
+    public function store(StoreAssigmentRequest $request)
+    {
         try {
             $existing = CourseAssignment::where('acdemic_course_id', $request->acdemic_course_id)
                 ->whereIn('week_id', $request->week_ids)
@@ -54,7 +88,8 @@ class AssignmentController extends Controller {
         }
     }
 
-    public function courseAcdemicRecords() {
+    public function courseAcdemicRecords()
+    {
         try {
             $courses = Course::with([
                 'acdemicyears' => function ($query) {
@@ -88,7 +123,8 @@ class AssignmentController extends Controller {
             return sendError('error', ['error' => 'An error occurred during store.'], 500);
         }
     }
-    public function courseAcdemicBasedRemainingWeeks(FetchWeeksRequest $request) {
+    public function courseAcdemicBasedRemainingWeeks(FetchWeeksRequest $request)
+    {
         try {
             $data = collect();
 
@@ -138,7 +174,8 @@ class AssignmentController extends Controller {
             return sendError('error', ['error' => 'An error occurred during fetch.'], 500);
         }
     }
-    public function courseAcdemicBasedWeeks(FetchWeeksRequest $request) {
+    public function courseAcdemicBasedWeeks(FetchWeeksRequest $request)
+    {
         try {
             $data = collect();
 

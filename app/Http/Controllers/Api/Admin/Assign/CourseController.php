@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\Admin\StoreCourseRequest;
 use App\Jobs\CreateStripePrice;
 use App\Models\Course;
+use Exception;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -15,6 +16,38 @@ class CourseController extends Controller
 {
     public function index()
     {
+        try {
+            $courses = Course::with('subjects:id,name', 'locations:id,name', 'modes:id,name', 'features:id,name,course_id', 'acdemicyears')
+                ->where('created_id', Auth::id())
+                ->orderBy('created_at', 'desc')
+                ->paginate(10)
+                ->through(function ($course) {
+                    return [
+                        'acdemicyear' => $course?->acdemicyears->first() ? $course?->acdemicyears->first()->start_end_year : null,
+                        'name' => $course->name,
+                        'slug' => $course->slug,
+                        'subjects' => $course->subjects->pluck('name'),
+                        'locations' => $course->locations->pluck('name'),
+                        'modes' => $course->modes->pluck('name'),
+                        'features' => $course->features->first()?->name ? Str::limit($course->features->first()?->name): null,
+                        'image' => $course->getFirstMediaUrl('course_image') ?? null,
+                        'amount' => $course->amount,
+                        'description' => $course->description ? Str::limit($course->description, 50) : null,
+                        'price_id' => $course?->price_id ?? null,
+                    ];
+                });
+            $response = [
+                'success' => true,
+                'message' => 'Courses fetched successfully.',
+                'data' => $courses,
+
+            ];
+            return response()->json($response, 200);
+        } catch (Exception $e) {
+            Log::error("Failed to fetch courses. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
+            return sendError('error', ['error' => 'An error occurred while fetching courses.'], 500);
+        }
+
 
     }
     /**
@@ -41,8 +74,8 @@ class CourseController extends Controller
             $courseObj = Course::create($courseData);
 
             if ($request->hasFile('course_image')) {
-                    $courseObj->addMedia($request->file('course_image'))
-                        ->toMediaCollection('course_image');
+                $courseObj->addMedia($request->file('course_image'))
+                    ->toMediaCollection('course_image');
             }
 
             $subjectData = collect($request->subject_ids)->mapWithKeys(fn($id) => [

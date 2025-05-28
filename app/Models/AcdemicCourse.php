@@ -11,4 +11,7 @@ class AcdemicCourse extends Model
     public function courses(){
         return $this->belongsTo(Course::class,'course_id', 'id');
     }
+    public function acdemicyears(){
+        return $this->belongsTo(AcdemicYear::class,'acdemic_id', 'id');
+    }
 }
