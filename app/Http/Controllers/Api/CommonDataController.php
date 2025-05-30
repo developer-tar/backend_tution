@@ -41,12 +41,15 @@ class CommonDataController extends Controller
                     'Locations' => Location::class,
                     'Modes' => Mode::class,
                 ];
-
                 if ($param === 'Roles') {
                     $data = Role::select('id', 'name')
                         ->whereNot('name', config('constants.roles.ADMIN'))
                         ->get();
-                } elseif (array_key_exists($param, $modelMap)) {
+                }
+                 if ($param === 'AcdemicYears') {
+                      $data = AcdemicYear::all();
+                }
+                 elseif (array_key_exists($param, $modelMap)) {
                     $model = $modelMap[$param];
                     $data = $model::select('id', 'name')->get();
                 }
