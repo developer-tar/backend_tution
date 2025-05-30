@@ -23,4 +23,8 @@ class Week extends Model
 
         return null;
     }
+    public function acdemicyears()
+    {
+        return $this->belongsTo(AcdemicYear::class, 'academic_year_id');
+    }
 }

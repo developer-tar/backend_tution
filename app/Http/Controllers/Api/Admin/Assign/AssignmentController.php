@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Admin\Assign;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\Admin\FetchWeeksRequest;
+use App\Http\Requests\Api\Admin\FetchWeeksRequestList;
 use App\Http\Requests\Api\Admin\StoreAssigmentRequest;
 
 use App\Models\AcdemicCourse;
@@ -22,26 +23,39 @@ class AssignmentController extends Controller
      * @param  StoreAssigmentRequest  $request
      * @return \Illuminate\Http\RedirectResponse
      */
-    public function index()
+    public function index(FetchWeeksRequestList $request)
     {
         try {
+            $data = [];
+            $assignedWeekIds = [];
+            $academicCourse = null;
+            if ($request->filled('acdemic_course_id')) {
+                $academicCourse = AcdemicCourse::select('acdemic_id')
+                    ->find($request->input('acdemic_course_id'));
+            }
 
-            $courseAssignment = CourseAssignment::with('weeks', 'acdemicCourses.courses', 'acdemicCourses.acdemicyears')
-                ->whereHas('acdemicCourses.courses', function ($query) {
-                    $query->where('created_id', auth()->id());
+            if ($request->filled('assigned_weeks') && $request->assigned_weeks == true) {
+                $assignedWeekIds = CourseAssignment::
+                    when($request->filled('acdemic_course_id'), function ($query) use ($academicCourse) {
+                        $query->where('acdemic_course_id', $academicCourse->id);
+                    })
+                    ->pluck('week_id')
+                    ->toArray();
+            }
+
+            // Get unassigned weeks for the academic year
+            $data = Week::select('start_date', 'end_date', 'week_number', 'id')
+                ->when(!empty($academicCourse), function ($query) use ($academicCourse) {
+                    $query->where('academic_year_id', $academicCourse->acdemic_id);
                 })
-                ->orderBy('created_at', 'desc')
-                ->get()
-                ->transform(function ($assignment) {
-           
-                    return [
-                        'acdemicyear' => $assignment?->acdemicyears?->first() ? $assignment?->acdemicyears?->first()->start_end_year : null,
-                        'course_name' => $assignment?->acdemicCourses?->courses?->name ?? null,
-                        'course_slug' => $assignment?->acdemicCourses?->courses?->slug ?? null,
-                        'week_number' => $assignment?->weeks?->first() ? $assignment?->weeks->first()?->week_number : null,
-                        'available_weeks' => $assignment?->weeks?->first() ? $assignment?->weeks?->first()?->start_end_date : null,
-                    ];
-                });
+                ->when(!empty($assignedWeekIds), function ($query) use ($assignedWeekIds) {
+                    return $query->whereIn('id', $assignedWeekIds);
+                })
+                ->get();
+
+            dd($data->toArray());
+
+
             $response = [
                 'success' => true,
                 'message' => 'Courses fetched successfully.',

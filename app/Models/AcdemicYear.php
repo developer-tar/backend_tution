@@ -20,5 +20,9 @@ class AcdemicYear extends Model
     {
         return $this->start_year . '/' . $this->end_year;
     }
+    public function courses()
+    {
+        return $this->belongsToMany(AcdemicCourse::class, 'academic_year_id');
+    }
    
 }

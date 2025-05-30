@@ -4,23 +4,25 @@ namespace App\Http\Requests\Api\Admin;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-class FetchWeeksRequest extends FormRequest
+class FetchWeeksRequestList extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
      */
     public function authorize(): bool
     {
+
         return true;
     }
 
     /**
-     * Merge route parameter into validation data.
+     * Merge input parameter into validation data.
      */
     protected function prepareForValidation()
     {
         $this->merge([
-            'acdemic_course_id' => $this->route('acdemic_course_id'),
+            'acdemic_course_id' => $this->input('acdemic_course_id'),
+            'assigned_weeks' => $this->input('assigned_weeks'),
         ]);
     }
 
@@ -30,8 +32,8 @@ class FetchWeeksRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'acdemic_course_id' => ['required', 'integer', 'exists:acdemic_course,id'],
+            'acdemic_course_id' => ['nullable', 'integer', 'exists:acdemic_course,id'],
+            'assigned_weeks' => ['required', 'integer', 'in:0,1']
         ];
     }
 }
-
