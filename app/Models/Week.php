@@ -27,4 +27,7 @@ class Week extends Model
     {
         return $this->belongsTo(AcdemicYear::class, 'academic_year_id');
     }
+    public function assignment(){
+        return $this->hasMany(CourseAssignment::class, 'week_id');
+    }
 }

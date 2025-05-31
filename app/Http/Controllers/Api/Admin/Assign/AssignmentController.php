@@ -26,40 +26,39 @@ class AssignmentController extends Controller
     public function index(FetchWeeksRequestList $request)
     {
         try {
-            $data = [];
-            $assignedWeekIds = [];
-            $academicCourse = null;
-            if ($request->filled('acdemic_course_id')) {
-                $academicCourse = AcdemicCourse::select('acdemic_id')
-                    ->find($request->input('acdemic_course_id'));
-            }
 
-            if ($request->filled('assigned_weeks') && $request->assigned_weeks == true) {
-                $assignedWeekIds = CourseAssignment::
-                    when($request->filled('acdemic_course_id'), function ($query) use ($academicCourse) {
-                        $query->where('acdemic_course_id', $academicCourse->id);
-                    })
-                    ->pluck('week_id')
-                    ->toArray();
-            }
-
-            // Get unassigned weeks for the academic year
             $data = Week::select('start_date', 'end_date', 'week_number', 'id')
-                ->when(!empty($academicCourse), function ($query) use ($academicCourse) {
-                    $query->where('academic_year_id', $academicCourse->acdemic_id);
+                ->when($request->has('acdemic_course_id') && $request->has('assigned_weeks'), function ($q) use ($request) {
+                    $courseAssignment = CourseAssignment::query();
+                    if ($request->filled('acdemic_course_id')) {
+                        $courseAssignment->where('acdemic_course_id', $request->input('acdemic_course_id'));
+                    }
+                    $weekIds = $courseAssignment->pluck('week_id');
+                    if ($request->assigned_weeks) {
+                        $q->whereIn('id', $weekIds);
+                    } else {
+
+                        $q->whereNotIn('id', $weekIds);
+                    }
                 })
-                ->when(!empty($assignedWeekIds), function ($query) use ($assignedWeekIds) {
-                    return $query->whereIn('id', $assignedWeekIds);
-                })
-                ->get();
+                ->paginate()->through(function ($week) {
+                    return [
+                        'week_number' => $week->week_number,
+                        'start_end_date' => $week->start_end_date,
+                    ];
+                });
 
-            dd($data->toArray());
 
+            if ($data->isEmpty()) {
+                $message = 'No record found.';
 
+            } else {
+                $message = 'Courses  assignment fetched successfully.';
+            }
             $response = [
                 'success' => true,
-                'message' => 'Courses fetched successfully.',
-                'data' => $courseAssignment,
+                'message' => $message,
+                'data' => $data,
 
             ];
             return response()->json($response, 200);
