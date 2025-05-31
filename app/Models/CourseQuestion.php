@@ -10,4 +10,7 @@ class CourseQuestion extends Model {
         'name',
         'duration_in_sec'
     ];
+    public function options() {
+        return $this->hasMany(CourseOption::class, 'course_question_id', 'id');
+    }
 }

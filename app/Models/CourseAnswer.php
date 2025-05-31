@@ -9,4 +9,8 @@ class CourseAnswer extends Model
     protected $fillable =  [
         'course_option_id',
     ];
+    public function courseOption()
+    {
+        return $this->belongsTo(CourseOption::class, 'course_option_id', 'id');
+    }
 }

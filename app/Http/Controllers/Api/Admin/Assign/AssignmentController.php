@@ -26,7 +26,6 @@ class AssignmentController extends Controller
     public function index(FetchWeeksRequestList $request)
     {
         try {
-
             $data = Week::select('start_date', 'end_date', 'week_number', 'id')
                 ->when($request->has('acdemic_course_id') && $request->has('assigned_weeks'), function ($q) use ($request) {
                     $courseAssignment = CourseAssignment::query();

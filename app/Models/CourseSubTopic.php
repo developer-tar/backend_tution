@@ -12,4 +12,8 @@ class CourseSubTopic extends Model implements HasMedia
         'course_topic_id',
         'name',
      ];
+     public function courseTopic()
+     {
+         return $this->belongsTo(CourseTopic::class, 'course_topic_id', 'id');
+     }
 }
