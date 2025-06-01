@@ -1,6 +1,7 @@
 <?php
 
 
+use App\Http\Controllers\Api\Admin\Assign\AssignedStudentCourseController;
 use App\Http\Controllers\Api\Admin\Assign\AssignmentController;
 use App\Http\Controllers\Api\Admin\Assign\CourseContentTestController;
 use App\Http\Controllers\Api\Admin\Assign\CourseController;
@@ -42,4 +43,7 @@ Route::get('fetch/course/subtopic/{topic_id}', [CourseContentTestController::cla
 
 Route::get('ca_records', [AssignmentController::class, 'courseAcdemicRecords']);
 
+//start assigning the student for course  routing.
+Route::get('fetch/student/list/{acdemic_course_id}', [AssignedStudentCourseController::class, 'fetchStudentList']);
+Route::post('assign/course/student', [AssignedStudentCourseController::class, 'store']);
 

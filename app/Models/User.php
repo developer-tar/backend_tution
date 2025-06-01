@@ -64,4 +64,8 @@ class User extends Authenticatable
     {
         return $this->first_name . ' ' . $this->last_name;
     }
+    
+    public function course(){
+        return $this->belongsToMany(Course::class,'course_user', 'buyer_id', 'course_id');
+    }
 }
