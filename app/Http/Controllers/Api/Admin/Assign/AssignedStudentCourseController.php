@@ -10,12 +10,14 @@ use App\Http\Requests\Api\Admin\StoreTestRequest;
 
 use App\Models\AcdemicCourse;
 use App\Models\CourseAnswer;
+use App\Models\CourseAssignment;
 use App\Models\CourseOption;
 use App\Models\CourseQuestion;
 use App\Models\CourseSubTopic;
 use App\Models\CourseTest;
 use App\Models\CourseTopic;
 
+use App\Models\CourseUser;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -66,18 +68,36 @@ class AssignedStudentCourseController extends Controller
 
         try {
             DB::beginTransaction();
-            $courseId = AcdemicCourse::value('course_id', $request->input('acdemic_course_id'));
+            $courseId = AcdemicCourse::value('course_id', $request->input('acdemic_course_id'));//get the course id 
+
+            $assignmentIds = CourseAssignment::where('acdemic_course_id', $request->input('acdemic_course_id'))->pluck('id'); //get the course assign assignment ids 
+
+            $now = now();  // Get current timestamp once
+
+            $pivotDataForAssignment = [];
+
+            if ($assignmentIds->isNotEmpty()) {
+                foreach ($assignmentIds as $assignmentId) {
+                    $pivotDataForAssignment[$assignmentId] = [
+                        'course_id' => $courseId,
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
+                }
+            }
+
 
             $users = User::whereIn('id', $request->student_id)->get();
 
             foreach ($users as $user) {
                 $user->course()->syncWithoutDetaching([
                     $courseId => [
-                        'created_at' => now(),
-                        'updated_at' => now(),
+                        'created_at' => $now,
+                        'updated_at' => $now,
                         'status' => config('constants.statuses.APPROVED')
                     ]
                 ]);
+                $user->assignment()->syncWithoutDetaching($pivotDataForAssignment);
             }
 
             $query = CourseTopic::select('name')->findOrFail($request->input('topic_id'));
