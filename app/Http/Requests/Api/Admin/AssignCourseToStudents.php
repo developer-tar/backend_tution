@@ -16,7 +16,6 @@ class AssignCourseToStudents extends FormRequest
     {
         return [
             'acdemic_course_id' => ['required', 'integer', 'exists:acdemic_course,id'],
-
             'student_id' => ['required', 'array'],
             'student_id.*' => ['required', 'integer', 'exists:users,id'],
         ];

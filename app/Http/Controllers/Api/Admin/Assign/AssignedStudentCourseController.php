@@ -89,15 +89,13 @@ class AssignedStudentCourseController extends Controller
             $users = User::whereIn('id', $request->student_id)->get();
 
             foreach ($users as $user) {
-                 $user->course()->syncWithoutDetaching([
+                 $user->course()->syncWithoutDetaching([ 
                     $courseId => [
                         'created_at' => $now,
                         'updated_at' => $now,
                         'status' => config('constants.statuses.APPROVED')
                     ]
                 ]);
-                
-                $user->assignment()->syncWithoutDetaching($pivotDataForAssignment);
             }
 
             $query = CourseTopic::select('name')->findOrFail($request->input('topic_id'));
