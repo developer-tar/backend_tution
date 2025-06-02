@@ -74,29 +74,29 @@ class AssignedStudentCourseController extends Controller
 
             $now = now();  // Get current timestamp once
 
-            $pivotDataForAssignment = [];
+            // $pivotDataForAssignment = [];
 
-            if ($assignmentIds->isNotEmpty()) {
-                foreach ($assignmentIds as $assignmentId) {
-                    $pivotDataForAssignment[$assignmentId] = [
-                        'course_id' => $courseId,
-                        'created_at' => $now,
-                        'updated_at' => $now,
-                    ];
-                }
-            }
-
+            // if ($assignmentIds->isNotEmpty()) {
+            //     foreach ($assignmentIds as $assignmentId) {
+            //         $pivotDataForAssignment[$assignmentId] = [
+            //             'course_id' => $courseId,
+            //             'created_at' => $now,
+            //             'updated_at' => $now,
+            //         ];
+            //     }
+            // }
 
             $users = User::whereIn('id', $request->student_id)->get();
 
             foreach ($users as $user) {
-                $user->course()->syncWithoutDetaching([
+                 $user->course()->syncWithoutDetaching([
                     $courseId => [
                         'created_at' => $now,
                         'updated_at' => $now,
                         'status' => config('constants.statuses.APPROVED')
                     ]
                 ]);
+                
                 $user->assignment()->syncWithoutDetaching($pivotDataForAssignment);
             }
 
