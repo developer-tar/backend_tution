@@ -105,11 +105,11 @@ class AssignedStudentCourseController extends Controller {
 
             return response()->json([
                 'success' => true,
-                'message' => "Course has been assigned successfully",
+                'message' => "Course has been assigned to student successfully",
             ], 200);
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error("Failed to create test for course. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
+            Log::error("Failed to assign the  course to student. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
             $response = [
                 'success' => false,
                 'message' => "An error occurred during store",
