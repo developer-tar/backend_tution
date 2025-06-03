@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api\Admin\Assign;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\Admin\FetchTopicSubtopicList;
 use App\Http\Requests\Api\Admin\StoreTopicSubTopicRequest;
-
+use App\Jobs\UploadSingleContentFileJob;
 use App\Models\CourseSubTopic;
 use App\Models\CourseTopic;
 
@@ -137,8 +137,9 @@ class TopicSubTopicController extends Controller
                 }
 
                 foreach ($request->file('content_upload') as $file) {
-                    $targetModel->addMedia($file)
-                        ->toMediaCollection('content_upload', 'public');
+                        UploadSingleContentFileJob::dispatch($targetModel, $file);
+                    // $targetModel->addMedia($file)
+                    //     ->toMediaCollection('content_upload', 'public');
                 }
             }
 

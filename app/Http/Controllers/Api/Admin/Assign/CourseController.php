@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 
 use App\Http\Requests\Api\Admin\StoreCourseRequest;
 use App\Jobs\CreateStripePrice;
+use App\Jobs\UploadCourseImageJob;
 use App\Models\Course;
 use Exception;
 use Illuminate\Support\Facades\Auth;
@@ -74,8 +75,7 @@ class CourseController extends Controller
             $courseObj = Course::create($courseData);
 
             if ($request->hasFile('course_image')) {
-                $courseObj->addMedia($request->file('course_image'))
-                    ->toMediaCollection('course_image');
+               UploadCourseImageJob::dispatch($courseObj, $request->file('course_image'));
             }
 
             $subjectData = collect($request->subject_ids)->mapWithKeys(fn($id) => [
