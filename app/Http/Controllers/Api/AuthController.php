@@ -52,11 +52,10 @@ class AuthController extends Controller
                 $success['email'] = $user->email;
                 $success['full_name'] = $user->full_name;
                 $success['role'] = $user->roles()->first()?->name;
-                $success['token'] = $user->createToken('accessToken')->accessToken;
             }
             DB::commit();
 
-            return sendResponse($success, 'User has been successfully created.', 201);
+            return sendResponse($success, 'User has been successfully created,please login', 201);
         } catch (Exception $e) {
             DB::rollBack();
             Log::error("Failed to register  user. Message => {$e->getMessage()}, File => {$e->getFile()},  Line No => {$e->getLine()}, Error Code => {$e->getCode()}.");
