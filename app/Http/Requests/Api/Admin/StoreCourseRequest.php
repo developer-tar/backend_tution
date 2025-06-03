@@ -30,7 +30,7 @@ class StoreCourseRequest extends FormRequest
             'features_names.*' => ['string', 'min:50', 'max:500'],
 
             'acdemic_year_id' => ['required', 'integer', 'exists:acdemic_years,id'],
-            'course_image' => ['required', 'image', 'max:2048'],
+            'course_image' => ['required', 'image', 'max:10240'],
             'description' => ['required', 'string', 'min:500', 'max:10000'], // Fixed typo "requrired"
         ];
     }
