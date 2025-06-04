@@ -138,7 +138,7 @@ class TopicSubTopicController extends Controller
 
                 foreach ($request->file('content_upload') as $file) {
                     $targetModel->addMedia($file)
-                        ->toMediaCollection('content_upload', 'public');
+                        ->toMediaCollection('content_upload');
                 }
             }
 
