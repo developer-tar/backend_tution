@@ -137,9 +137,8 @@ class TopicSubTopicController extends Controller
                 }
 
                 foreach ($request->file('content_upload') as $file) {
-                        UploadSingleContentFileJob::dispatch($targetModel, $file);
-                    // $targetModel->addMedia($file)
-                    //     ->toMediaCollection('content_upload', 'public');
+                    $targetModel->addMedia($file)
+                        ->toMediaCollection('content_upload');
                 }
             }
 
