@@ -9,12 +9,15 @@ use App\Http\Requests\Api\CheckQueryDataRequest;
 use App\Models\AcdemicYear;
 use App\Models\Course;
 use App\Models\Day;
+use App\Models\Gender;
 use App\Models\Location;
 use App\Models\Mode;
 use App\Models\Month;
+use App\Models\Region;
 use App\Models\Role;
 
 use App\Models\Subject;
+use App\Models\TargetSchool;
 use App\Models\Year;
 use Exception;
 
@@ -40,6 +43,9 @@ class CommonDataController extends Controller
                     'AcdemicYears' => AcdemicYear::class,
                     'Locations' => Location::class,
                     'Modes' => Mode::class,
+                    'Regions' => Region::class,
+                    'Genders' => Gender::class,
+                    'TargetSchools' => TargetSchool::class
                 ];
                 if ($param === 'Roles') {
                     $data = Role::select('id', 'name')
