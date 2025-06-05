@@ -39,5 +39,8 @@ class Course extends Model implements HasMedia
     {
         return $this->belongsToMany(Mode::class, 'mode_user', 'course_id', 'mode_id');
     }
+    public function acdemiccourse(){
+        return $this->hasMany(AcdemicCourse::class, 'course_id', 'id');
+    }
 
 }

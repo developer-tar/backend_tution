@@ -108,5 +108,9 @@ return [
         'Grammer',
         'Independent',
     ],
-    
+    'assignment_content' => [
+        'Topic' => 'App\Models\CourseTopic',
+        'SubTopic' => 'App\Models\CourseSubTopic'
+    ],
+
 ];

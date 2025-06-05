@@ -21,4 +21,14 @@ class ManageStudentRecord extends Model {
         'is_completed',
         'completed_at',
     ];
+
+    public function course(){
+        return $this->belongsTo(Course::class, 'course_id','id');
+    }
+    public function parent(){
+        return $this->belongsTo(ManageStudentRecord::class,'parent_id', 'id');
+    }
+    public function children() {
+    return $this->hasMany(ManageStudentRecord::class, 'parent_id', 'id');
+}
 }
