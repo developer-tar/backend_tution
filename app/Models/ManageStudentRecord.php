@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 
 class ManageStudentRecord extends Model {
-    
+
     protected $fillable = [
         'parent_id',
         'course_id',
@@ -22,13 +22,17 @@ class ManageStudentRecord extends Model {
         'completed_at',
     ];
 
-    public function course(){
-        return $this->belongsTo(Course::class, 'course_id','id');
+    public function course() {
+        return $this->belongsTo(Course::class, 'course_id', 'id');
     }
-    public function parent(){
-        return $this->belongsTo(ManageStudentRecord::class,'parent_id', 'id');
+    public function parent() {
+        return $this->belongsTo(ManageStudentRecord::class, 'parent_id', 'id');
     }
     public function children() {
-    return $this->hasMany(ManageStudentRecord::class, 'parent_id', 'id');
-}
+        return $this->hasMany(ManageStudentRecord::class, 'parent_id', 'id');
+    }
+    public function modelable() {
+        return $this->morphTo('model');
+    }
+    
 }

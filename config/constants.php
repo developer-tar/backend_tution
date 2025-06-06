@@ -50,6 +50,10 @@ return [
         'YES' => 1,
         'NO' => 0,
     ],
+    'completed_reverse' => [
+        1 => "YES",
+        0 => "NO",
+    ],
     'path' => [
         'image' => 1,
         'video' => 2,
@@ -109,8 +113,10 @@ return [
         'Independent',
     ],
     'assignment_content' => [
-        'Topic' => 'App\Models\CourseTopic',
-        'SubTopic' => 'App\Models\CourseSubTopic'
+        'TopicContent' => 'App\Models\CourseTopic',
+        'SubTopicContent' => 'App\Models\CourseSubTopic',
+        'TopicTest' => 'App\Models\CourseTopicTest',
+        'SubTopicTest' => 'App\Models\CourseSubTopicTest'
     ],
 
 ];

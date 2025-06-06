@@ -3,25 +3,33 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use PDO;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
-class CourseTopic extends Model implements HasMedia
-{
-     use InteractsWithMedia;
-     protected $fillable = [
+
+class CourseTopic extends Model implements HasMedia {
+    use InteractsWithMedia;
+    protected $fillable = [
         'course_assignment_id',
         'subject_id',
         'name'
-     ];
-     public function subtopic(){
-      return $this->hasMany(CourseSubTopic::class,'course_topic_id', 'id');
-     }
-     public function courseAssignment()
-     {
-         return $this->belongsTo(CourseAssignment::class, 'course_assignment_id', 'id');
-     }
-     public function subject()
-     {
-         return $this->belongsTo(Subject::class, 'subject_id', 'id');
-     }
+    ];
+    public function subtopic() {
+        return $this->hasMany(CourseSubTopic::class, 'course_topic_id', 'id');
+    }
+
+    public function courseAssignment() {
+        return $this->belongsTo(CourseAssignment::class, 'course_assignment_id', 'id');
+    }
+
+    public function subject() {
+        return $this->belongsTo(Subject::class, 'subject_id', 'id');
+    }
+    public function courseTest() {
+        return $this->hasMany(CourseTest::class, 'course_topic_id', 'id')
+            ->where('course_sub_topic_id', null);
+    }
+    public function manageStudentRecords() {
+        return $this->morphMany(ManageStudentRecord::class, 'model');
+    }
 }
