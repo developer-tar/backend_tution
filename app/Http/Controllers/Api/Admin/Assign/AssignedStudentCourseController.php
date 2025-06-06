@@ -65,7 +65,10 @@ class AssignedStudentCourseController extends Controller {
         try {
 
             DB::beginTransaction();
+            
             $academicCourseId = $request->input('acdemic_course_id');
+            $studentIds = $request->input('student_id');
+
             $courseId = AcdemicCourse::where('id', $academicCourseId)->value('course_id');
 
             $assignmentIds = CourseAssignment::where('acdemic_course_id', $academicCourseId)->pluck('id')->toArray();
@@ -81,7 +84,7 @@ class AssignedStudentCourseController extends Controller {
             $courseSubTopicQuestionIds = CourseQuestion::whereIn('course_test_id', $courseSubTopicTestIds)->pluck('id')->toArray();
             $courseSubTopicOptionsIds = CourseOption::whereIn('course_question_id', $courseSubTopicQuestionIds)->pluck('id')->toArray();
 
-            $userIds = User::whereIn('id', $request->input('student_id'))->pluck('id')->toArray();
+            $userIds = User::whereIn('id', $studentIds)->pluck('id')->toArray();
 
             foreach (array_chunk($userIds, 100) as $userChunk) {
                 foreach ($userChunk as $userId) {
