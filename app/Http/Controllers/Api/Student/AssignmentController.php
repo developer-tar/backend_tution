@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Student;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\Student\CAssignmentRequest;
 
+use App\Models\Course;
 use App\Models\CourseSubTopic;
 use App\Models\CourseTest;
 use App\Models\CourseTopic;
@@ -12,7 +13,8 @@ use App\Models\ManageStudentRecord;
 use Carbon\Carbon;
 
 
-class AssignmentController extends Controller {
+class AssignmentController extends Controller
+{
     // public function currentAssignment(CAssignmentRequest $request) {
     //     $userId = auth()->user()->id;
     //     $subjectId = $request->subject_id;
@@ -20,7 +22,7 @@ class AssignmentController extends Controller {
 
 
 
-    //     $date = Carbon::parse('2025-01-13 00:00:00'); // or any input datetime
+    //     $date = Carbon::parse('2024-12-30 00:00:00'); // or any input datetime
 
 
     //     $collectAssignmentIds = ManageStudentRecord::with([
@@ -200,40 +202,40 @@ class AssignmentController extends Controller {
     //         return response()->json($response, 200);
     //     }
 
-       
+
     // }
 
 
 
-    public function currentAssignment(CAssignmentRequest $request)
-    {
-        $userId = auth()->id();
-       
-        $subjectId = $request->subject_id;
-        $chooseTitle = $request->choose_title;
-        $date = Carbon::parse('2025-01-13 00:00:00');
+    // public function currentAssignment(CAssignmentRequest $request)
+    // {
+    //     $userId = auth()->id();
 
-        $collectAssignmentIds = $this->getAssignmentIdsForDate($userId, $date);
-        
-        if (!$collectAssignmentIds->count()) {
-            return response()->json(['success' => false, 'message' => 'No record found.', 'data' => []], 200);
-        }
+    //     $subjectId = $request->subject_id;
+    //     $chooseTitle = $request->choose_title;
+    //     $date = Carbon::parse('2025-01-13 00:00:00');
 
-        $query = CourseTopic::with('manageStudentRecords')
-            ->whereHas('manageStudentRecords', fn($q) => $q->where('buyer_id', $userId))
-            ->whereIn('course_assignment_id', $collectAssignmentIds)
-            ->where('subject_id', $subjectId);
+    //     $collectAssignmentIds = $this->getAssignmentIdsForDate($userId, $date);
 
-        $model = config('constants.assignment_content.' . $chooseTitle);
-        
-        return match ($model) {
-            'App\\Models\\CourseTopic' => $this->handleCourseTopic($query),
-            'App\\Models\\CourseSubTopic' => $this->handleCourseSubTopic($query, $collectAssignmentIds, $subjectId, $userId),
-            'App\\Models\\CourseTopicTest' => $this->handleCourseTest($query, $collectAssignmentIds, $subjectId, $userId, true),
-            'App\\Models\\CourseSubTopicTest' => $this->handleCourseTest($query, $collectAssignmentIds, $subjectId, $userId, false),
-            default => response()->json(['success' => false, 'message' => 'Invalid content type.', 'data' => []], 400),
-        };
-    }
+    //     if (!$collectAssignmentIds->count()) {
+    //         return response()->json(['success' => false, 'message' => 'No record found.', 'data' => []], 200);
+    //     }
+
+    //     $query = CourseTopic::with('manageStudentRecords')
+    //         ->whereHas('manageStudentRecords', fn($q) => $q->where('buyer_id', $userId))
+    //         ->whereIn('course_assignment_id', $collectAssignmentIds)
+    //         ->where('subject_id', $subjectId);
+
+    //     $model = config('constants.assignment_content.' . $chooseTitle);
+
+    //     return match ($model) {
+    //         'App\\Models\\CourseTopic' => $this->handleCourseTopic($query),
+    //         'App\\Models\\CourseSubTopic' => $this->handleCourseSubTopic($query, $collectAssignmentIds, $subjectId, $userId),
+    //         'App\\Models\\CourseTopicTest' => $this->handleCourseTest($query, $collectAssignmentIds, $subjectId, $userId, true),
+    //         'App\\Models\\CourseSubTopicTest' => $this->handleCourseTest($query, $collectAssignmentIds, $subjectId, $userId, false),
+    //         default => response()->json(['success' => false, 'message' => 'Invalid content type.', 'data' => []], 400),
+    //     };
+    // }
 
     private function getAssignmentIdsForDate($userId, $date)
     {
@@ -291,9 +293,9 @@ class AssignmentController extends Controller {
 
     private function handleCourseTest($query, $assignmentIds, $subjectId, $userId, $isTopicTest = true)
     {
-       
+
         $topicIds = $query->pluck('id');
-     
+
         $tests = CourseTest::with('courseTopic', 'courseSubTopic', 'manageStudentRecord')
             ->whereHas('courseTopic', fn($q) => $q->whereIn('course_assignment_id', $assignmentIds)->where('subject_id', $subjectId))
             ->whereHas('manageStudentRecord', fn($q) => $q->where('buyer_id', $userId))
@@ -315,6 +317,42 @@ class AssignmentController extends Controller {
             'message' => $tests->total() ? 'Courses Topic fetched successfully.' : 'No record found.',
             'data' => $tests,
         ], 200);
+    }
+
+
+
+    public function currentAssignment(CAssignmentRequest $request)
+    {
+        $userId = auth()->user()->id;
+        $subjectId = $request->subject_id;
+
+
+        $chooseTitle = $request->choose_title;
+
+        $course = Course::with('manageStudentRecord:id,model_id,model_type', 'subjects')
+            ->whereHas(
+                'manageStudentRecord',
+                function ($q) use ($userId) {
+                    return $q->where('buyer_id', $userId);
+                }
+            )
+            ->whereHas('subjects', function ($qq) use ($subjectId) {
+                // dd($q->get());
+                return $qq->where('subjects.id', $subjectId);
+            })
+            // ->select('id')
+            ->get();
+    
+        dd($course);
+        if ($course->isNotEmpty()) {
+
+            $courseIds = $course->flatMap(function ($item) {
+                return $item->manageStudentRecord->pluck('id');
+            })->values();
+        } //fetch the coursedIds from manage_student_records table
+
+
+        dd($courseIds);
     }
 }
 // 2024-12-30 00:00:00

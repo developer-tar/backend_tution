@@ -42,5 +42,8 @@ class Course extends Model implements HasMedia
     public function acdemiccourse(){
         return $this->hasMany(AcdemicCourse::class, 'course_id', 'id');
     }
+   public function manageStudentRecord() {
+        return $this->morphMany(ManageStudentRecord::class, 'model');
+    }
 
 }
