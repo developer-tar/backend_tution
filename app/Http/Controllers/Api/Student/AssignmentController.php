@@ -329,21 +329,23 @@ class AssignmentController extends Controller
 
         $chooseTitle = $request->choose_title;
 
-        $course = Course::with('manageStudentRecord:id,model_id,model_type', 'subjects')
+        $course = Course::with(['manageStudentRecord:id,model_id,model_type', 'subjects' => function ($q) use ($subjectId) {
+    $q->where('subjects.id', $subjectId);
+}])
             ->whereHas(
                 'manageStudentRecord',
                 function ($q) use ($userId) {
                     return $q->where('buyer_id', $userId);
                 }
             )
-            ->whereHas('subjects', function ($qq) use ($subjectId) {
+            ->whereHas('subjects', function ($q) use ($subjectId) {
                 // dd($q->get());
-                return $qq->where('subjects.id', $subjectId);
+                return $q->where('subjects.id', $subjectId);
             })
-            // ->select('id')
-            ->get();
-    
-        dd($course);
+            ->select('id')
+            ->get()->toArray();
+            dd($course);
+            
         if ($course->isNotEmpty()) {
 
             $courseIds = $course->flatMap(function ($item) {
