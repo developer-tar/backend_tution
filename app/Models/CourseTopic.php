@@ -29,7 +29,7 @@ class CourseTopic extends Model implements HasMedia {
         return $this->hasMany(CourseTest::class, 'course_topic_id', 'id')
             ->where('course_sub_topic_id', null);
     }
-    public function manageStudentRecords() {
+    public function manageStudentRecord() {
         return $this->morphMany(ManageStudentRecord::class, 'model');
     }
 }

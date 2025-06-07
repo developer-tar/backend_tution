@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\Student\CAssignmentRequest;
 
 use App\Models\Course;
+use App\Models\CourseAssignment;
 use App\Models\CourseSubTopic;
 use App\Models\CourseTest;
 use App\Models\CourseTopic;
@@ -325,36 +326,234 @@ class AssignmentController extends Controller
     {
         $userId = auth()->user()->id;
         $subjectId = $request->subject_id;
+        $assignmentIds = array();
+        $courseIds = array();
 
-
+        $date = Carbon::parse('2024-12-30 00:00:00');
         $chooseTitle = $request->choose_title;
 
-        $course = Course::with(['manageStudentRecord:id,model_id,model_type', 'subjects' => function ($q) use ($subjectId) {
-    $q->where('subjects.id', $subjectId);
-}])
+        $course = Course::with('manageStudentRecord:id,model_id,model_type')
             ->whereHas(
                 'manageStudentRecord',
                 function ($q) use ($userId) {
                     return $q->where('buyer_id', $userId);
                 }
             )
-            ->whereHas('subjects', function ($q) use ($subjectId) {
-                // dd($q->get());
-                return $q->where('subjects.id', $subjectId);
-            })
+
             ->select('id')
-            ->get()->toArray();
-            dd($course);
-            
-        if ($course->isNotEmpty()) {
+            ->get();
 
-            $courseIds = $course->flatMap(function ($item) {
-                return $item->manageStudentRecord->pluck('id');
-            })->values();
-        } //fetch the coursedIds from manage_student_records table
+        if ($course->isEmpty()) {
+            $response = [
+                'success' => true,
+                'message' => 'No course found.',
+                'data' => [],
+            ];
+            return response()->json($response, 404);
+        }
+
+        $courseIds = $course->flatMap(function ($item) {
+            return $item->manageStudentRecord->pluck('id');
+        })->values(); //fetch the coursedIds from manage_student_records table.
+
+        $assignment = CourseAssignment::with('manageStudentRecord', 'weeks')
+
+            ->whereHas('manageStudentRecord', function ($q) use ($courseIds) {
+                $q->whereIn('parent_id', $courseIds);
+            })
+
+            ->whereHas('weeks', function ($q) use ($date) {
+                $q->where('start_date', '<=', $date)
+                    ->where('end_date', '>=', $date);
+            })
+            ->get();
+
+        if ($assignment->isEmpty()) {
+            $response = [
+                'success' => true,
+                'message' => 'No assignment found for this course.',
+                'data' => [],
+            ];
+            return response()->json($response, 404);
+        }
+
+        $assignmentIds = $assignment->flatMap(function ($item) {
+            return $item->manageStudentRecord->pluck('id');
+        })->unique()->values();
 
 
-        dd($courseIds);
+        if (config('constants.assignment_content.' . $chooseTitle) == 'App\Models\CourseTopic') {
+            $topicContent = CourseTopic::with('manageStudentRecord')
+                ->whereHas('manageStudentRecord', function ($q) use ($assignmentIds) {
+                    $q->whereIn('parent_id', $assignmentIds);
+                })
+                ->where('subject_id', $subjectId)
+                ->paginate();
+
+
+            $topicContent->through(function ($item) {
+                $record = $item->manageStudentRecord->first(); // Assuming only one per topic per student
+                return [
+                    'id' => $item->id,
+                    'name' => $item->name,
+                    'completed' => optional($record)->is_completed !== null
+                        ? config('constants.completed_reverse.' . optional($record)->is_completed)
+                        : null,
+                    'completed_at' => optional($record)->completed_at,
+                ];
+            });
+
+            $response = [
+                'success' => true,
+                'message' => $topicContent->total() ? 'Topic content fetched successfully.'
+                    : 'No Topic content record found.',
+                'data' => $topicContent,
+            ];
+
+            return response()->json($response, $topicContent->total() ? 200 : 404);
+        }//fetch the Topic content 
+
+        if (config('constants.assignment_content.' . $chooseTitle) == 'App\Models\CourseSubTopic') {
+
+            $topicIds = ManageStudentRecord::whereIn('parent_id', $assignmentIds)->pluck('id')->toArray();
+
+            if (empty($topicIds)) {
+                $response = [
+                    'success' => true,
+                    'message' => 'Topics are not found.',
+                    'data' => [],
+                ];
+                return response()->json($response, 404);
+            }
+
+            $subTopicContent = CourseSubTopic::with('courseTopic', 'manageStudentRecord')
+                ->whereHas('manageStudentRecord', function ($q) use ($topicIds) {
+                    $q->whereIn('parent_id', $topicIds);
+                })
+                ->whereHas('courseTopic', function ($q) use ($subjectId) {
+                    $q->where('subject_id', $subjectId);
+                })
+                ->paginate();
+
+            $subTopicContent->through(function ($item) {
+                $record = $item->manageStudentRecord->first();
+
+                return [
+                    'id' => $item->id,
+                    'sub_topic_name' => $item->name,
+                    'course_name' => optional($item->courseTopic)->name,
+                    'completed' => optional($record)->is_completed !== null
+                        ? config('constants.completed_reverse.' . optional($record)->is_completed)
+                        : null,
+                    'completed_at' => optional($record)->completed_at,
+                ];
+            });
+            $response = [
+                'success' => true,
+                'message' => $subTopicContent->total() ? 'SubTopic Content fetched successfully.'
+                    : 'No subtopic record found.',
+                'data' => $subTopicContent,
+            ];
+
+            return response()->json($response, $subTopicContent->total() ? 200 : 404);
+        }
+
+        if (config('constants.assignment_content.' . $chooseTitle) == 'App\Models\CourseTopicTest') {
+
+            $topicIds = ManageStudentRecord::whereIn('parent_id', $assignmentIds)->pluck('id')->toArray();
+
+            if (empty($topicIds)) {
+                $response = [
+                    'success' => true,
+                    'message' => 'Topics are not found.',
+                    'data' => [],
+                ];
+                return response()->json($response, 404);
+            }
+
+            $topicTest = CourseTest::with('courseTopic', 'manageStudentRecord')
+
+                ->whereHas('courseTopic', function ($q) use ($subjectId) {
+                    $q->where('subject_id', $subjectId);
+                })
+                ->whereHas('manageStudentRecord', function ($q) use ($topicIds) {
+                    $q->whereIn('parent_id', $topicIds);
+                })
+                ->whereNull('course_sub_topic_id')
+                ->paginate();
+
+            $topicTest->through(function ($item) {
+                $record = $item->manageStudentRecord->first();
+
+                return [
+                    'id' => $item->id,
+                    'test_name' => $item->name,
+                    'course_name' => optional($item->courseTopic)->name,
+
+                    'completed' => optional($record)->is_completed !== null
+                        ? config('constants.completed_reverse.' . optional($record)->is_completed)
+                        : null,
+                    'completed_at' => optional($record)->completed_at,
+                ];
+            });
+            $response = [
+                'success' => true,
+                'message' => $topicTest->total() ? 'Topic test  fetched successfully.'
+                    : 'No topic test record found.',
+                'data' => $topicTest,
+            ];
+
+            return response()->json($response, $topicTest->total() ? 200 : 404);
+        }
+
+        if (config('constants.assignment_content.' . $chooseTitle) == 'App\Models\CourseSubTopicTest') {
+
+            $topicIds = ManageStudentRecord::whereIn('parent_id', $assignmentIds)->pluck('id')->toArray();
+
+            if (empty($topicIds)) {
+                $response = [
+                    'success' => true,
+                    'message' => 'Topics are not found.',
+                    'data' => [],
+                ];
+                return response()->json($response, 404);
+            }
+
+            $subTopicIds = ManageStudentRecord::whereIn('parent_id', $topicIds)->pluck('id')->toArray();
+
+            $topicTest = CourseTest::with('courseSubTopic.courseTopic', 'manageStudentRecord')
+
+                ->whereHas('courseSubTopic.courseTopic', function ($q) use ($subjectId) {
+                    $q->where('subject_id', $subjectId);
+                })
+                ->whereHas('manageStudentRecord', function ($q) use ($subTopicIds) {
+                    $q->whereIn('parent_id', $subTopicIds);
+                })
+                ->get();
+                dd($topicTest->toArray());
+            $topicTest->through(function ($item) {
+                $record = $item->manageStudentRecord->first();
+
+                return [
+                    'id' => $item->id,
+                    'test_name' => $item->name,
+                    'topic_name' => optional($item->courseTopic)->name,
+                    'sub_topic_name' => optional($item->courseSubTopic)->name,
+                    'completed' => optional($record)->is_completed !== null
+                        ? config('constants.completed_reverse.' . optional($record)->is_completed)
+                        : null,
+                    'completed_at' => optional($record)->completed_at,
+                ];
+            });
+            $response = [
+                'success' => true,
+                'message' => $topicTest->total() ? 'Topic test  fetched successfully.'
+                    : 'No topic test record found.',
+                'data' => $topicTest,
+            ];
+
+            return response()->json($response, $topicTest->total() ? 200 : 404);
+        }
     }
 }
 // 2024-12-30 00:00:00

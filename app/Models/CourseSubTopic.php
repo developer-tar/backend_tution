@@ -15,7 +15,7 @@ class CourseSubTopic extends Model implements HasMedia {
     public function courseTopic() {
         return $this->belongsTo(CourseTopic::class, 'course_topic_id', 'id');
     }
-    public function manageStudentRecords() {
+    public function manageStudentRecord() {
         return $this->morphMany(ManageStudentRecord::class, 'model');
     }
 }

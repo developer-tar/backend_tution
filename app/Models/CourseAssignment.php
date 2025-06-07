@@ -10,12 +10,17 @@ class CourseAssignment extends Model
         'week_id',
         'acdemic_course_id'
     ];
-    
-    public  function weeks(){
-        return $this->belongsTo(Week::class, 'week_id','id');
-    }
-     public  function acdemicCourses() {
-        return $this->belongsTo(AcdemicCourse::class, 'acdemic_course_id','id');
-    }
 
+    public function weeks()
+    {
+        return $this->belongsTo(Week::class, 'week_id', 'id');
+    }
+    public function acdemicCourses()
+    {
+        return $this->belongsTo(AcdemicCourse::class, 'acdemic_course_id', 'id');
+    }
+    public function manageStudentRecord()
+    {
+        return $this->morphMany(ManageStudentRecord::class, 'model');
+    }
 }
