@@ -16,545 +16,450 @@ use Carbon\Carbon;
 
 class AssignmentController extends Controller
 {
-    // public function currentAssignment(CAssignmentRequest $request) {
+
+    // public function currentAssignment(CAssignmentRequest $request)
+    // {
     //     $userId = auth()->user()->id;
     //     $subjectId = $request->subject_id;
+    //     $assignmentIds = array();
+    //     $courseIds = array();
+
+    //     $date = Carbon::parse('2024-12-30 00:00:00');
     //     $chooseTitle = $request->choose_title;
 
+    //     $course = Course::with('manageStudentRecord:id,model_id,model_type')
+    //         ->whereHas(
+    //             'manageStudentRecord',
+    //             function ($q) use ($userId) {
+    //                 return $q->where('buyer_id', $userId);
+    //             }
+    //         )
 
+    //         ->select('id')
+    //         ->get();
 
-    //     $date = Carbon::parse('2024-12-30 00:00:00'); // or any input datetime
+    //     if ($course->isEmpty()) {
+    //         $response = [
+    //             'success' => true,
+    //             'message' => 'No course found.',
+    //             'data' => [],
+    //         ];
+    //         return response()->json($response, 404);
+    //     }
 
+    //     $courseIds = $course->flatMap(function ($item) {
+    //         return $item->manageStudentRecord->pluck('id');
+    //     })->values(); //fetch the coursedIds from manage_student_records table.
 
-    //     $collectAssignmentIds = ManageStudentRecord::with([
-    //         'course.acdemiccourse.assignment' => function ($q) use ($date) {
-    //             $q->whereHas('weeks', function ($q) use ($date) {
-    //                 $q->where('start_date', '<=', $date)
-    //                     ->where('end_date', '>=', $date);
-    //             });
-    //         },
-    //         'course.acdemiccourse.assignment.weeks' => function ($q) use ($date) {
-    //             $q->where('start_date', '<=', $date)
-    //                 ->where('end_date', '>=', $date);
-    //         }
-    //     ])
-    //         ->whereHas('course.acdemiccourse.assignment.weeks', function ($q) use ($date) {
+    //     $assignment = CourseAssignment::with('manageStudentRecord', 'weeks')
+
+    //         ->whereHas('manageStudentRecord', function ($q) use ($courseIds) {
+    //             $q->whereIn('parent_id', $courseIds);
+    //         })
+
+    //         ->whereHas('weeks', function ($q) use ($date) {
     //             $q->where('start_date', '<=', $date)
     //                 ->where('end_date', '>=', $date);
     //         })
-    //         ->whereNull('parent_id')
-    //         ->where('buyer_id', $userId)
-    //         ->get()
-    //         ->pluck('course')
-    //         ->pluck('acdemiccourse')
-    //         ->flatten()
-    //         ->pluck('assignment')
-    //         ->flatten()
-    //         ->pluck('id')
-    //         ->unique()
-    //         ->values(); //get the data for getting the assignment id'
+    //         ->get();
 
-    //     $query = collect();
-    //     if ($collectAssignmentIds) {
-    //         $query = CourseTopic::with('manageStudentRecords')
-
-    //             ->whereHas('manageStudentRecords', function ($q) use ($userId) {
-    //                 return $q->where('buyer_id', $userId);
-    //             })
-    //             ->whereIn('course_assignment_id', $collectAssignmentIds)
-    //             ->where('subject_id', $subjectId);
+    //     if ($assignment->isEmpty()) {
+    //         $response = [
+    //             'success' => true,
+    //             'message' => 'No assignment found for this course.',
+    //             'data' => [],
+    //         ];
+    //         return response()->json($response, 404);
     //     }
 
+    //     $assignmentIds = $assignment->flatMap(function ($item) {
+    //         return $item->manageStudentRecord->pluck('id');
+    //     })->unique()->values();
+
+
     //     if (config('constants.assignment_content.' . $chooseTitle) == 'App\Models\CourseTopic') {
+    //         $topicContent = CourseTopic::with('manageStudentRecord')
+    //             ->whereHas('manageStudentRecord', function ($q) use ($assignmentIds) {
+    //                 $q->whereIn('parent_id', $assignmentIds);
+    //             })
+    //             ->where('subject_id', $subjectId)
+    //             ->paginate();
 
-    //         $topics = $query->paginate(10);
 
-    //         $topics->through(function ($item) {
-    //             $record = $item->manageStudentRecords->first(); // Assuming only one per topic per student
+    //         $topicContent->through(function ($item) {
+    //             $record = $item->manageStudentRecord->first(); // Assuming only one per topic per student
     //             return [
     //                 'id' => $item->id,
     //                 'name' => $item->name,
-    //                 'completed' => optional($record)->is_completed ? config('constants.completed_reverse.1') : config('constants.completed_reverse.0'),
+    //                 'completed' => optional($record)->is_completed !== null
+    //                     ? config('constants.completed_reverse.' . optional($record)->is_completed)
+    //                     : null,
     //                 'completed_at' => optional($record)->completed_at,
     //             ];
     //         });
 
     //         $response = [
     //             'success' => true,
-    //             'message' => $topics->total() ? 'Courses Topic fetched successfully.'
-    //                 : 'No record found.',
-    //             'data' => $topics,
+    //             'message' => $topicContent->total() ? 'Topic content fetched successfully.'
+    //                 : 'No Topic content record found.',
+    //             'data' => $topicContent,
     //         ];
 
-    //         return response()->json($response, 200);
-    //     }
+    //         return response()->json($response, $topicContent->total() ? 200 : 404);
+    //     }//fetch the Topic content 
 
     //     if (config('constants.assignment_content.' . $chooseTitle) == 'App\Models\CourseSubTopic') {
-    //         $topics = $query->get();
-    //         $topicIds = $topics->pluck('id')->toArray();
 
-    //         $subTopics = CourseSubTopic::with('courseTopic', 'manageStudentRecords')
-    //             ->whereHas('courseTopic', function ($q) use ($collectAssignmentIds, $subjectId) {
-    //                 return $q->whereIn('course_assignment_id', $collectAssignmentIds)
-    //                     ->where('subject_id', $subjectId);
+    //         $topicIds = ManageStudentRecord::whereIn('parent_id', $assignmentIds)->pluck('id')->toArray();
+
+    //         if (empty($topicIds)) {
+    //             $response = [
+    //                 'success' => true,
+    //                 'message' => 'Topics are not found.',
+    //                 'data' => [],
+    //             ];
+    //             return response()->json($response, 404);
+    //         }
+
+    //         $subTopicContent = CourseSubTopic::with('courseTopic', 'manageStudentRecord')
+    //             ->whereHas('manageStudentRecord', function ($q) use ($topicIds) {
+    //                 $q->whereIn('parent_id', $topicIds);
     //             })
-    //             ->whereHas('manageStudentRecords', function ($q) use ($userId) {
-    //                 return $q->where('buyer_id', $userId);
+    //             ->whereHas('courseTopic', function ($q) use ($subjectId) {
+    //                 $q->where('subject_id', $subjectId);
     //             })
-    //             ->whereIn('course_topic_id', $topicIds)
     //             ->paginate();
 
-    //         $subTopics->through(function ($item) {
-    //             $record = $item->manageStudentRecords->first();
+    //         $subTopicContent->through(function ($item) {
+    //             $record = $item->manageStudentRecord->first();
+
     //             return [
-    //                 'id' => $item?->id,
-    //                 'topic_name' => optional($item->courseTopic)->name,
+    //                 'id' => $item->id,
     //                 'sub_topic_name' => $item->name,
-    //                 'completed' => optional($record)->is_completed ? config('constants.completed_reverse.1') : config('constants.completed_reverse.0'),
+    //                 'course_name' => optional($item->courseTopic)->name,
+    //                 'completed' => optional($record)->is_completed !== null
+    //                     ? config('constants.completed_reverse.' . optional($record)->is_completed)
+    //                     : null,
     //                 'completed_at' => optional($record)->completed_at,
     //             ];
     //         });
-
     //         $response = [
     //             'success' => true,
-    //             'message' => $subTopics->total() ? 'Courses Topic fetched successfully.'
-    //                 : 'No record found.',
-    //             'data' => $subTopics,
+    //             'message' => $subTopicContent->total() ? 'SubTopic Content fetched successfully.'
+    //                 : 'No subtopic record found.',
+    //             'data' => $subTopicContent,
     //         ];
 
-    //         return response()->json($response, 200);
+    //         return response()->json($response, $subTopicContent->total() ? 200 : 404);
     //     }
 
     //     if (config('constants.assignment_content.' . $chooseTitle) == 'App\Models\CourseTopicTest') {
-    //         $topics = $query->get();
 
-    //         $topicIds = $topics->pluck('id')->toArray();
+    //         $topicIds = ManageStudentRecord::whereIn('parent_id', $assignmentIds)->pluck('id')->toArray();
 
-    //         $topicTest = CourseTest::with('courseTopic', 'courseSubTopic', 'manageStudentRecord')
-    //             ->whereHas('courseTopic', function ($q) use ($collectAssignmentIds, $subjectId) {
-    //                 return $q->whereIn('course_assignment_id', $collectAssignmentIds)
-    //                     ->where('subject_id', $subjectId);
+    //         if (empty($topicIds)) {
+    //             $response = [
+    //                 'success' => true,
+    //                 'message' => 'Topics are not found.',
+    //                 'data' => [],
+    //             ];
+    //             return response()->json($response, 404);
+    //         }
+
+    //         $topicTest = CourseTest::with('courseTopic', 'manageStudentRecord')
+
+    //             ->whereHas('courseTopic', function ($q) use ($subjectId) {
+    //                 $q->where('subject_id', $subjectId);
     //             })
-    //             ->whereHas('manageStudentRecord', function ($q) use ($userId) {
-    //                 return $q->where('buyer_id', $userId);
+    //             ->whereHas('manageStudentRecord', function ($q) use ($topicIds) {
+    //                 $q->whereIn('parent_id', $topicIds);
     //             })
-    //             ->whereIn('course_topic_id', $topicIds)
     //             ->whereNull('course_sub_topic_id')
     //             ->paginate();
 
     //         $topicTest->through(function ($item) {
     //             $record = $item->manageStudentRecord->first();
+
     //             return [
-    //                 'id' => $item?->id,
+    //                 'id' => $item->id,
     //                 'test_name' => $item->name,
-    //                 'topic_name' => optional($item->courseTopic)->name,
-    //                 'sub_topic_name' => optional($item->courseSubTopic)->name,
-    //                 'completed' => optional($record)->is_completed ? config('constants.completed_reverse.1') : config('constants.completed_reverse.0'),
+    //                 'course_name' => optional($item->courseTopic)->name,
+
+    //                 'completed' => optional($record)->is_completed !== null
+    //                     ? config('constants.completed_reverse.' . optional($record)->is_completed)
+    //                     : null,
     //                 'completed_at' => optional($record)->completed_at,
     //             ];
     //         });
-
     //         $response = [
     //             'success' => true,
-    //             'message' => $topicTest->total() ? 'Courses Topic fetched successfully.'
-    //                 : 'No record found.',
+    //             'message' => $topicTest->total() ? 'Topic test  fetched successfully.'
+    //                 : 'No topic test record found.',
     //             'data' => $topicTest,
     //         ];
 
-    //         return response()->json($response, 200);
+    //         return response()->json($response, $topicTest->total() ? 200 : 404);
     //     }
 
-    //      if (config('constants.assignment_content.' . $chooseTitle) == 'App\Models\CourseSubTopicTest') {
-    //         $topics = $query->get();
+    //     if (config('constants.assignment_content.' . $chooseTitle) == 'App\Models\CourseSubTopicTest') {
 
-    //         $topicIds = $topics->pluck('id')->toArray();
+    //         $topicIds = ManageStudentRecord::whereIn('parent_id', $assignmentIds)->pluck('id')->toArray();
 
-    //         $topicTest = CourseTest::with('courseTopic', 'courseSubTopic', 'manageStudentRecord')
-    //             ->whereHas('courseTopic', function ($q) use ($collectAssignmentIds, $subjectId) {
-    //                 return $q->whereIn('course_assignment_id', $collectAssignmentIds)
-    //                     ->where('subject_id', $subjectId);
+    //         if (empty($topicIds)) {
+    //             $response = [
+    //                 'success' => true,
+    //                 'message' => 'Topics are not found.',
+    //                 'data' => [],
+    //             ];
+    //             return response()->json($response, 404);
+    //         }
+
+    //         $subTopicIds = ManageStudentRecord::whereIn('parent_id', $topicIds)->pluck('id')->toArray();
+
+    //         $topicTest = CourseTest::with('courseSubTopic.courseTopic', 'manageStudentRecord')
+
+    //             ->whereHas('courseSubTopic.courseTopic', function ($q) use ($subjectId) {
+    //                 $q->where('subject_id', $subjectId);
     //             })
-    //             ->whereHas('manageStudentRecord', function ($q) use ($userId) {
-    //                 return $q->where('buyer_id', $userId);
+    //             ->whereHas('manageStudentRecord', function ($q) use ($subTopicIds) {
+    //                 $q->whereIn('parent_id', $subTopicIds);
     //             })
-    //             ->whereIn('course_topic_id', $topicIds)
-    //             ->whereNotNull('course_sub_topic_id')
     //             ->paginate();
 
     //         $topicTest->through(function ($item) {
     //             $record = $item->manageStudentRecord->first();
+
     //             return [
-    //                 'id' => $item?->id,
+    //                 'id' => $item->id,
     //                 'test_name' => $item->name,
     //                 'topic_name' => optional($item->courseTopic)->name,
     //                 'sub_topic_name' => optional($item->courseSubTopic)->name,
-    //                 'completed' => optional($record)->is_completed ? config('constants.completed_reverse.1') : config('constants.completed_reverse.0'),
+    //                 'completed' => optional($record)->is_completed !== null
+    //                     ? config('constants.completed_reverse.' . optional($record)->is_completed)
+    //                     : null,
     //                 'completed_at' => optional($record)->completed_at,
     //             ];
     //         });
-
     //         $response = [
     //             'success' => true,
-    //             'message' => $topicTest->total() ? 'Courses Topic fetched successfully.'
-    //                 : 'No record found.',
+    //             'message' => $topicTest->total() ? 'Topic test  fetched successfully.'
+    //                 : 'No topic test record found.',
     //             'data' => $topicTest,
     //         ];
 
-    //         return response()->json($response, 200);
+    //         return response()->json($response, $topicTest->total() ? 200 : 404);
     //     }
-
-
     // }
 
-
-
-    // public function currentAssignment(CAssignmentRequest $request)
-    // {
-    //     $userId = auth()->id();
-
-    //     $subjectId = $request->subject_id;
-    //     $chooseTitle = $request->choose_title;
-    //     $date = Carbon::parse('2025-01-13 00:00:00');
-
-    //     $collectAssignmentIds = $this->getAssignmentIdsForDate($userId, $date);
-
-    //     if (!$collectAssignmentIds->count()) {
-    //         return response()->json(['success' => false, 'message' => 'No record found.', 'data' => []], 200);
-    //     }
-
-    //     $query = CourseTopic::with('manageStudentRecords')
-    //         ->whereHas('manageStudentRecords', fn($q) => $q->where('buyer_id', $userId))
-    //         ->whereIn('course_assignment_id', $collectAssignmentIds)
-    //         ->where('subject_id', $subjectId);
-
-    //     $model = config('constants.assignment_content.' . $chooseTitle);
-
-    //     return match ($model) {
-    //         'App\\Models\\CourseTopic' => $this->handleCourseTopic($query),
-    //         'App\\Models\\CourseSubTopic' => $this->handleCourseSubTopic($query, $collectAssignmentIds, $subjectId, $userId),
-    //         'App\\Models\\CourseTopicTest' => $this->handleCourseTest($query, $collectAssignmentIds, $subjectId, $userId, true),
-    //         'App\\Models\\CourseSubTopicTest' => $this->handleCourseTest($query, $collectAssignmentIds, $subjectId, $userId, false),
-    //         default => response()->json(['success' => false, 'message' => 'Invalid content type.', 'data' => []], 400),
-    //     };
-    // }
-
-    private function getAssignmentIdsForDate($userId, $date)
+    public function currentAssignment(CAssignmentRequest $request)
     {
-        return ManageStudentRecord::with(['course.acdemiccourse.assignment.weeks' => fn($q) => $q->whereBetween('start_date', [$date, $date])])
-            ->whereHas('course.acdemiccourse.assignment.weeks', fn($q) => $q->whereBetween('start_date', [$date, $date]))
-            ->whereNull('parent_id')
-            ->where('buyer_id', $userId)
+        $userId = auth()->id();
+        $subjectId = $request->subject_id;
+        $chooseTitle = $request->choose_title;
+        $date = Carbon::now();
+
+        $contentType = config("constants.assignment_content.$chooseTitle");
+
+        // Step 1: Get ManageStudentRecord IDs linked to user via Course
+        $courseIds = Course::whereHas(
+            'manageStudentRecord',
+            fn($q) =>
+            $q->where('buyer_id', $userId)
+        )
+            ->with(['manageStudentRecord:id,model_id,model_type'])
             ->get()
-            ->pluck('course.acdemiccourse.assignment')
-            ->flatten()
-            ->pluck('id')
+            ->flatMap(fn($course) => $course->manageStudentRecord->pluck('id'))
+            ->values();
+
+        if ($courseIds->isEmpty()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'No course found.',
+                'data' => [],
+            ], 404);
+        }
+
+        // Step 2: Get Assignment IDs linked to these courses and within date range
+        $assignmentIds = CourseAssignment::with('manageStudentRecord', 'weeks')
+            ->whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $courseIds))
+            ->whereHas('weeks', fn($q) => $q->where('start_date', '<=', $date)->where('end_date', '>=', $date))
+            ->get()
+            ->flatMap(fn($assignment) => $assignment->manageStudentRecord->pluck('id'))
             ->unique()
             ->values();
+
+        if ($assignmentIds->isEmpty()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'No assignment found for this course.',
+                'data' => [],
+            ], 404);
+        }
+
+        // Step 3: Dispatch by content type
+        switch ($contentType) {
+            case CourseTopic::class:
+                return $this->fetchCourseTopics($assignmentIds, $subjectId);
+
+            case CourseSubTopic::class:
+                return $this->fetchCourseSubTopics($assignmentIds, $subjectId);
+
+            case 'App\Models\CourseTopicTest':
+                return $this->fetchTopicTests($assignmentIds, $subjectId);
+
+            case 'App\Models\CourseSubTopicTest':
+                return $this->fetchSubTopicTests($assignmentIds, $subjectId);
+
+            default:
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid content type.',
+                ], 400);
+        }
     }
 
-    private function handleCourseTopic($query)
+    private function fetchCourseTopics($assignmentIds, $subjectId)
     {
-        $topics = $query->paginate(10)->through(fn($item) => [
-            'id' => $item->id,
-            'name' => $item->name,
-            'completed' => optional($item->manageStudentRecords->first())->is_completed ? config('constants.completed_reverse.1') : config('constants.completed_reverse.0'),
-            'completed_at' => optional($item->manageStudentRecords->first())->completed_at,
-        ]);
+        $topics = CourseTopic::with('manageStudentRecord')
+            ->whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $assignmentIds))
+            ->where('subject_id', $subjectId)
+            ->paginate();
 
-        return response()->json([
-            'success' => true,
-            'message' => $topics->total() ? 'Courses Topic fetched successfully.' : 'No record found.',
-            'data' => $topics,
-        ], 200);
-    }
-
-    private function handleCourseSubTopic($query, $assignmentIds, $subjectId, $userId)
-    {
-        $topicIds = $query->pluck('id');
-
-        $subTopics = CourseSubTopic::with('courseTopic', 'manageStudentRecords')
-            ->whereHas('courseTopic', fn($q) => $q->whereIn('course_assignment_id', $assignmentIds)->where('subject_id', $subjectId))
-            ->whereHas('manageStudentRecords', fn($q) => $q->where('buyer_id', $userId))
-            ->whereIn('course_topic_id', $topicIds)
-            ->paginate()
-            ->through(fn($item) => [
+        $topics->getCollection()->transform(function ($item) {
+            $record = $item->manageStudentRecord->first();
+            return [
                 'id' => $item->id,
-                'topic_name' => optional($item->courseTopic)->name,
-                'sub_topic_name' => $item->name,
-                'completed' => optional($item->manageStudentRecords->first())->is_completed ? config('constants.completed_reverse.1') : config('constants.completed_reverse.0'),
-                'completed_at' => optional($item->manageStudentRecords->first())->completed_at,
-            ]);
+                'name' => $item->name,
+                'completed' => optional($record)->is_completed !== null
+                    ? config('constants.completed_reverse.' . optional($record)->is_completed)
+                    : null,
+                'completed_at' => optional($record)->completed_at,
+            ];
+        });
 
         return response()->json([
             'success' => true,
-            'message' => $subTopics->total() ? 'Courses Topic fetched successfully.' : 'No record found.',
-            'data' => $subTopics,
-        ], 200);
+            'message' => $topics->total() ? 'Topic content fetched successfully.' : 'No Topic content record found.',
+            'data' => $topics,
+        ], $topics->total() ? 200 : 404);
     }
 
-    private function handleCourseTest($query, $assignmentIds, $subjectId, $userId, $isTopicTest = true)
+    private function fetchCourseSubTopics($assignmentIds, $subjectId)
     {
+        $topicIds = ManageStudentRecord::whereIn('parent_id', $assignmentIds)->pluck('id');
 
-        $topicIds = $query->pluck('id');
+        if ($topicIds->isEmpty()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Topics are not found.',
+                'data' => [],
+            ], 404);
+        }
 
-        $tests = CourseTest::with('courseTopic', 'courseSubTopic', 'manageStudentRecord')
-            ->whereHas('courseTopic', fn($q) => $q->whereIn('course_assignment_id', $assignmentIds)->where('subject_id', $subjectId))
-            ->whereHas('manageStudentRecord', fn($q) => $q->where('buyer_id', $userId))
-            ->whereIn('course_topic_id', $topicIds)
-            ->when($isTopicTest, fn($q) => $q->whereNull('course_sub_topic_id'))
-            ->when(!$isTopicTest, fn($q) => $q->whereNotNull('course_sub_topic_id'))
-            ->paginate()
-            ->through(fn($item) => [
+        $subTopics = CourseSubTopic::with('courseTopic', 'manageStudentRecord')
+            ->whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $topicIds))
+            ->whereHas('courseTopic', fn($q) => $q->where('subject_id', $subjectId))
+            ->paginate();
+
+        $subTopics->getCollection()->transform(function ($item) {
+            $record = $item->manageStudentRecord->first();
+            return [
+                'id' => $item->id,
+                'sub_topic_name' => $item->name,
+                'course_name' => optional($item->courseTopic)->name,
+                'completed' => optional($record)->is_completed !== null
+                    ? config('constants.completed_reverse.' . optional($record)->is_completed)
+                    : null,
+                'completed_at' => optional($record)->completed_at,
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => $subTopics->total() ? 'SubTopic Content fetched successfully.' : 'No subtopic record found.',
+            'data' => $subTopics,
+        ], $subTopics->total() ? 200 : 404);
+    }
+
+    private function fetchTopicTests($assignmentIds, $subjectId)
+    {
+        $topicIds = ManageStudentRecord::whereIn('parent_id', $assignmentIds)->pluck('id');
+
+        if ($topicIds->isEmpty()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Topics are not found.',
+                'data' => [],
+            ], 404);
+        }
+
+        $tests = CourseTest::with('courseTopic', 'manageStudentRecord')
+            ->whereHas('courseTopic', fn($q) => $q->where('subject_id', $subjectId))
+            ->whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $topicIds))
+            ->whereNull('course_sub_topic_id')
+            ->paginate();
+
+        $tests->getCollection()->transform(function ($item) {
+            $record = $item->manageStudentRecord->first();
+            return [
+                'id' => $item->id,
+                'test_name' => $item->name,
+                'course_name' => optional($item->courseTopic)->name,
+                'completed' => optional($record)->is_completed !== null
+                    ? config('constants.completed_reverse.' . optional($record)->is_completed)
+                    : null,
+                'completed_at' => optional($record)->completed_at,
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => $tests->total() ? 'Topic test fetched successfully.' : 'No topic test record found.',
+            'data' => $tests,
+        ], $tests->total() ? 200 : 404);
+    }
+
+    private function fetchSubTopicTests($assignmentIds, $subjectId)
+    {
+        $topicIds = ManageStudentRecord::whereIn('parent_id', $assignmentIds)->pluck('id');
+
+        if ($topicIds->isEmpty()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Topics are not found.',
+                'data' => [],
+            ], 404);
+        }
+
+        $subTopicIds = ManageStudentRecord::whereIn('parent_id', $topicIds)->pluck('id');
+
+        $tests = CourseTest::with('courseSubTopic.courseTopic', 'manageStudentRecord')
+            ->whereHas('courseSubTopic.courseTopic', fn($q) => $q->where('subject_id', $subjectId))
+            ->whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $subTopicIds))
+            ->paginate();
+
+        $tests->getCollection()->transform(function ($item) {
+            $record = $item->manageStudentRecord->first();
+            return [
                 'id' => $item->id,
                 'test_name' => $item->name,
                 'topic_name' => optional($item->courseTopic)->name,
                 'sub_topic_name' => optional($item->courseSubTopic)->name,
-                'completed' => optional($item->manageStudentRecord->first())->is_completed ? config('constants.completed_reverse.1') : config('constants.completed_reverse.0'),
-                'completed_at' => optional($item->manageStudentRecord->first())->completed_at,
-            ]);
+                'completed' => optional($record)->is_completed !== null
+                    ? config('constants.completed_reverse.' . optional($record)->is_completed)
+                    : null,
+                'completed_at' => optional($record)->completed_at,
+            ];
+        });
 
         return response()->json([
             'success' => true,
-            'message' => $tests->total() ? 'Courses Topic fetched successfully.' : 'No record found.',
+            'message' => $tests->total() ? 'Topic test fetched successfully.' : 'No topic test record found.',
             'data' => $tests,
-        ], 200);
+        ], $tests->total() ? 200 : 404);
     }
 
 
-
-    public function currentAssignment(CAssignmentRequest $request)
-    {
-        $userId = auth()->user()->id;
-        $subjectId = $request->subject_id;
-        $assignmentIds = array();
-        $courseIds = array();
-
-        $date = Carbon::parse('2024-12-30 00:00:00');
-        $chooseTitle = $request->choose_title;
-
-        $course = Course::with('manageStudentRecord:id,model_id,model_type')
-            ->whereHas(
-                'manageStudentRecord',
-                function ($q) use ($userId) {
-                    return $q->where('buyer_id', $userId);
-                }
-            )
-
-            ->select('id')
-            ->get();
-
-        if ($course->isEmpty()) {
-            $response = [
-                'success' => true,
-                'message' => 'No course found.',
-                'data' => [],
-            ];
-            return response()->json($response, 404);
-        }
-
-        $courseIds = $course->flatMap(function ($item) {
-            return $item->manageStudentRecord->pluck('id');
-        })->values(); //fetch the coursedIds from manage_student_records table.
-
-        $assignment = CourseAssignment::with('manageStudentRecord', 'weeks')
-
-            ->whereHas('manageStudentRecord', function ($q) use ($courseIds) {
-                $q->whereIn('parent_id', $courseIds);
-            })
-
-            ->whereHas('weeks', function ($q) use ($date) {
-                $q->where('start_date', '<=', $date)
-                    ->where('end_date', '>=', $date);
-            })
-            ->get();
-
-        if ($assignment->isEmpty()) {
-            $response = [
-                'success' => true,
-                'message' => 'No assignment found for this course.',
-                'data' => [],
-            ];
-            return response()->json($response, 404);
-        }
-
-        $assignmentIds = $assignment->flatMap(function ($item) {
-            return $item->manageStudentRecord->pluck('id');
-        })->unique()->values();
-
-
-        if (config('constants.assignment_content.' . $chooseTitle) == 'App\Models\CourseTopic') {
-            $topicContent = CourseTopic::with('manageStudentRecord')
-                ->whereHas('manageStudentRecord', function ($q) use ($assignmentIds) {
-                    $q->whereIn('parent_id', $assignmentIds);
-                })
-                ->where('subject_id', $subjectId)
-                ->paginate();
-
-
-            $topicContent->through(function ($item) {
-                $record = $item->manageStudentRecord->first(); // Assuming only one per topic per student
-                return [
-                    'id' => $item->id,
-                    'name' => $item->name,
-                    'completed' => optional($record)->is_completed !== null
-                        ? config('constants.completed_reverse.' . optional($record)->is_completed)
-                        : null,
-                    'completed_at' => optional($record)->completed_at,
-                ];
-            });
-
-            $response = [
-                'success' => true,
-                'message' => $topicContent->total() ? 'Topic content fetched successfully.'
-                    : 'No Topic content record found.',
-                'data' => $topicContent,
-            ];
-
-            return response()->json($response, $topicContent->total() ? 200 : 404);
-        }//fetch the Topic content 
-
-        if (config('constants.assignment_content.' . $chooseTitle) == 'App\Models\CourseSubTopic') {
-
-            $topicIds = ManageStudentRecord::whereIn('parent_id', $assignmentIds)->pluck('id')->toArray();
-
-            if (empty($topicIds)) {
-                $response = [
-                    'success' => true,
-                    'message' => 'Topics are not found.',
-                    'data' => [],
-                ];
-                return response()->json($response, 404);
-            }
-
-            $subTopicContent = CourseSubTopic::with('courseTopic', 'manageStudentRecord')
-                ->whereHas('manageStudentRecord', function ($q) use ($topicIds) {
-                    $q->whereIn('parent_id', $topicIds);
-                })
-                ->whereHas('courseTopic', function ($q) use ($subjectId) {
-                    $q->where('subject_id', $subjectId);
-                })
-                ->paginate();
-
-            $subTopicContent->through(function ($item) {
-                $record = $item->manageStudentRecord->first();
-
-                return [
-                    'id' => $item->id,
-                    'sub_topic_name' => $item->name,
-                    'course_name' => optional($item->courseTopic)->name,
-                    'completed' => optional($record)->is_completed !== null
-                        ? config('constants.completed_reverse.' . optional($record)->is_completed)
-                        : null,
-                    'completed_at' => optional($record)->completed_at,
-                ];
-            });
-            $response = [
-                'success' => true,
-                'message' => $subTopicContent->total() ? 'SubTopic Content fetched successfully.'
-                    : 'No subtopic record found.',
-                'data' => $subTopicContent,
-            ];
-
-            return response()->json($response, $subTopicContent->total() ? 200 : 404);
-        }
-
-        if (config('constants.assignment_content.' . $chooseTitle) == 'App\Models\CourseTopicTest') {
-
-            $topicIds = ManageStudentRecord::whereIn('parent_id', $assignmentIds)->pluck('id')->toArray();
-
-            if (empty($topicIds)) {
-                $response = [
-                    'success' => true,
-                    'message' => 'Topics are not found.',
-                    'data' => [],
-                ];
-                return response()->json($response, 404);
-            }
-
-            $topicTest = CourseTest::with('courseTopic', 'manageStudentRecord')
-
-                ->whereHas('courseTopic', function ($q) use ($subjectId) {
-                    $q->where('subject_id', $subjectId);
-                })
-                ->whereHas('manageStudentRecord', function ($q) use ($topicIds) {
-                    $q->whereIn('parent_id', $topicIds);
-                })
-                ->whereNull('course_sub_topic_id')
-                ->paginate();
-
-            $topicTest->through(function ($item) {
-                $record = $item->manageStudentRecord->first();
-
-                return [
-                    'id' => $item->id,
-                    'test_name' => $item->name,
-                    'course_name' => optional($item->courseTopic)->name,
-
-                    'completed' => optional($record)->is_completed !== null
-                        ? config('constants.completed_reverse.' . optional($record)->is_completed)
-                        : null,
-                    'completed_at' => optional($record)->completed_at,
-                ];
-            });
-            $response = [
-                'success' => true,
-                'message' => $topicTest->total() ? 'Topic test  fetched successfully.'
-                    : 'No topic test record found.',
-                'data' => $topicTest,
-            ];
-
-            return response()->json($response, $topicTest->total() ? 200 : 404);
-        }
-
-        if (config('constants.assignment_content.' . $chooseTitle) == 'App\Models\CourseSubTopicTest') {
-
-            $topicIds = ManageStudentRecord::whereIn('parent_id', $assignmentIds)->pluck('id')->toArray();
-
-            if (empty($topicIds)) {
-                $response = [
-                    'success' => true,
-                    'message' => 'Topics are not found.',
-                    'data' => [],
-                ];
-                return response()->json($response, 404);
-            }
-
-            $subTopicIds = ManageStudentRecord::whereIn('parent_id', $topicIds)->pluck('id')->toArray();
-
-            $topicTest = CourseTest::with('courseSubTopic.courseTopic', 'manageStudentRecord')
-
-                ->whereHas('courseSubTopic.courseTopic', function ($q) use ($subjectId) {
-                    $q->where('subject_id', $subjectId);
-                })
-                ->whereHas('manageStudentRecord', function ($q) use ($subTopicIds) {
-                    $q->whereIn('parent_id', $subTopicIds);
-                })
-                ->get();
-                dd($topicTest->toArray());
-            $topicTest->through(function ($item) {
-                $record = $item->manageStudentRecord->first();
-
-                return [
-                    'id' => $item->id,
-                    'test_name' => $item->name,
-                    'topic_name' => optional($item->courseTopic)->name,
-                    'sub_topic_name' => optional($item->courseSubTopic)->name,
-                    'completed' => optional($record)->is_completed !== null
-                        ? config('constants.completed_reverse.' . optional($record)->is_completed)
-                        : null,
-                    'completed_at' => optional($record)->completed_at,
-                ];
-            });
-            $response = [
-                'success' => true,
-                'message' => $topicTest->total() ? 'Topic test  fetched successfully.'
-                    : 'No topic test record found.',
-                'data' => $topicTest,
-            ];
-
-            return response()->json($response, $topicTest->total() ? 200 : 404);
-        }
-    }
 }
 // 2024-12-30 00:00:00
 // 2025-01-05 22:00:00
