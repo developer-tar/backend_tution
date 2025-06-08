@@ -18,3 +18,13 @@ use Illuminate\Support\Facades\Route;
 Route::get('/current/assignment', [AssignmentController::class, 'currentAssignment']);
 
 //end course routing
+
+//topic content api with specfic id
+Route::get('topic/content/view/{topic_id}', [AssignmentController::class, 'topicContentView']);
+
+//topic test api with specfic id
+Route::get('topic/test/{test_id}', [AssignmentController::class, 'topicTest']);
+
+//subtopic content api with specfic id
+Route::get('subtopic/content/view/{sub_topic_id}', [AssignmentController::class, 'subTopicContentView']);
+

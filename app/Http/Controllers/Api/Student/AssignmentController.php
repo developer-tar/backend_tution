@@ -5,12 +5,16 @@ namespace App\Http\Controllers\Api\Student;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\Student\CAssignmentRequest;
 
+use App\Http\Requests\Api\Student\SubTopicIdRequest;
+use App\Http\Requests\Api\Student\TestIdRequest;
+use App\Http\Requests\Api\Student\TopicIdRequest;
 use App\Models\Course;
 use App\Models\CourseAssignment;
 use App\Models\CourseSubTopic;
 use App\Models\CourseTest;
 use App\Models\CourseTopic;
 use App\Models\ManageStudentRecord;
+use App\Models\Week;
 use Carbon\Carbon;
 
 
@@ -253,68 +257,260 @@ class AssignmentController extends Controller
 
     public function currentAssignment(CAssignmentRequest $request)
     {
-        $userId = auth()->id();
-        $subjectId = $request->subject_id;
-        $chooseTitle = $request->choose_title;
-        $date = Carbon::now();
+        try {
+            $userId = auth()->id();
+            $subjectId = $request->subject_id;
+            $chooseTitle = $request->choose_title;
+            $date = Carbon::now();
 
-        $contentType = config("constants.assignment_content.$chooseTitle");
+            $contentType = config("constants.assignment_content.$chooseTitle");
 
-        // Step 1: Get ManageStudentRecord IDs linked to user via Course
-        $courseIds = Course::whereHas(
-            'manageStudentRecord',
-            fn($q) =>
-            $q->where('buyer_id', $userId)
-        )
-            ->with(['manageStudentRecord:id,model_id,model_type'])
-            ->get()
-            ->flatMap(fn($course) => $course->manageStudentRecord->pluck('id'))
-            ->values();
+            // Step 1: Get ManageStudentRecord IDs linked to user via Course
+            $courseIds = Course::whereHas(
+                'manageStudentRecord',
+                fn($q) =>
+                $q->where('buyer_id', $userId)
+            )
+                ->with(['manageStudentRecord:id,model_id,model_type'])
+                ->get()
+                ->flatMap(fn($course) => $course->manageStudentRecord->pluck('id'))
+                ->values();
 
-        if ($courseIds->isEmpty()) {
-            return response()->json([
-                'success' => true,
-                'message' => 'No course found.',
-                'data' => [],
-            ], 404);
+            if ($courseIds->isEmpty()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'No course found.',
+                    'data' => [],
+                ], 404);
+            }
+
+            // Step 2: Get Assignment IDs linked to these courses and within date range
+            $assignmentIds = CourseAssignment::with('manageStudentRecord', 'weeks')
+                ->whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $courseIds))
+                ->whereHas('weeks', fn($q) => $q->where('start_date', '<=', $date)->where('end_date', '>=', $date))
+                ->get()
+                ->flatMap(fn($assignment) => $assignment->manageStudentRecord->pluck('id'))
+                ->unique()
+                ->values();
+
+            if ($assignmentIds->isEmpty()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'No assignment found for this course.',
+                    'data' => [],
+                ], 404);
+            }
+
+            // Step 3: Dispatch by content type
+            switch ($contentType) {
+                case CourseTopic::class:
+                    return $this->fetchCourseTopics($assignmentIds, $subjectId);
+
+                case CourseSubTopic::class:
+                    return $this->fetchCourseSubTopics($assignmentIds, $subjectId);
+
+                case 'App\Models\CourseTopicTest':
+                    return $this->fetchTopicTests($assignmentIds, $subjectId);
+
+                case 'App\Models\CourseSubTopicTest':
+                    return $this->fetchSubTopicTests($assignmentIds, $subjectId);
+
+                default:
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Invalid content type.',
+                    ], 400);
+            }
+        } catch (\Exception $e) {
+            \Log::error("Failed to fetch the current assignment. Message => {$e->getMessage()}, File => {$e->getFile()},  Line No => {$e->getLine()}, Error Code => {$e->getCode()}.");
+            return sendError('Error', ['error' => 'An error is occured.'], 500);
         }
 
-        // Step 2: Get Assignment IDs linked to these courses and within date range
-        $assignmentIds = CourseAssignment::with('manageStudentRecord', 'weeks')
-            ->whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $courseIds))
-            ->whereHas('weeks', fn($q) => $q->where('start_date', '<=', $date)->where('end_date', '>=', $date))
-            ->get()
-            ->flatMap(fn($assignment) => $assignment->manageStudentRecord->pluck('id'))
-            ->unique()
-            ->values();
+    }
 
-        if ($assignmentIds->isEmpty()) {
-            return response()->json([
-                'success' => true,
-                'message' => 'No assignment found for this course.',
-                'data' => [],
-            ], 404);
-        }
+    public function topicContentView(TopicIdRequest $request)
+    {
+        try {
 
-        // Step 3: Dispatch by content type
-        switch ($contentType) {
-            case CourseTopic::class:
-                return $this->fetchCourseTopics($assignmentIds, $subjectId);
+            $courseTopic = CourseTopic::with('courseTest', 'courseAssignment.weeks')->find($request->input('topic_id'));
 
-            case CourseSubTopic::class:
-                return $this->fetchCourseSubTopics($assignmentIds, $subjectId);
 
-            case 'App\Models\CourseTopicTest':
-                return $this->fetchTopicTests($assignmentIds, $subjectId);
-
-            case 'App\Models\CourseSubTopicTest':
-                return $this->fetchSubTopicTests($assignmentIds, $subjectId);
-
-            default:
+            if (!$courseTopic) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Invalid content type.',
+                    'data' => [],
                 ], 400);
+            }
+            $week = optional($courseTopic->courseAssignment)->weeks;
+
+            if ($week && Carbon::parse($week->start_date)->isFuture()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Right now, you have no access to this content.',
+                    'data' => [],
+                ], 400);
+            }
+
+            if (!$week) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Something went wrong: week is invalid or missing.',
+                    'data' => [],
+                ], 400);
+            }
+
+
+            $data = [
+                'id' => $courseTopic->id,
+                'topic_name' => $courseTopic->name,
+                'topic_media' => $courseTopic->getMedia('content_upload')->map(fn($m) => [
+                    'url' => $m->getUrl(),
+                    'type' => $m->mime_type,
+                ]),
+                'topic_test' => $courseTopic->courseTest->pluck('name', 'id'),
+            ];
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Data fetched successfully.',
+                'data' => $data,
+            ], 200);
+        } catch (\Exception $e) {
+            \Log::error("Failed to fetch the topic. Message => {$e->getMessage()}, File => {$e->getFile()}, Line No => {$e->getLine()}, Error Code => {$e->getCode()}.");
+
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred while fetching the topic.',
+                'data' => [],
+            ], 500);
+        }
+    }
+
+    public function topicTest(TestIdRequest $request)
+    {
+        try {
+
+            $topicTest = CourseTest::with('courseTopic.courseAssignment.weeks', 'question.options')
+                ->whereNull('course_sub_topic_id')
+                ->find($request->input('test_id'));
+
+                if (!$topicTest) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid content type.',
+                    'data' => [],
+                ], 400);
+            }
+            $week = optional($topicTest->courseTopic->courseAssignment)->weeks;
+            $now = Carbon::now();
+
+            if (!$now->between(Carbon::parse($week->start_date), Carbon::parse($week->end_date))) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Right now, you have no access to this give the test.',
+                    'data' => [],
+                ], 400);
+            }
+
+            if (!$week) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Something went wrong: week is invalid or missing.',
+                    'data' => [],
+                ], 400);
+            }
+
+            $questions = $topicTest->question->map(function ($question) {
+                return [
+                    'id' => $question->id,
+                    'name' => $question->name,
+                    'options' => $question->options->map(function ($option) {
+                        return [
+                            'id' => $option->id,
+                            'name' => $option->name,
+                        ];
+                    }),
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Test data fetched successfully.',
+                'data' => [
+                    'test' => [
+                        'id' => $topicTest->id,
+                        'name' => $topicTest->name,
+                        'questions' => $questions,
+                    ],
+                ],
+            ]);
+        } catch (\Exception $e) {
+            \Log::error("Failed to fetch the topic. Message => {$e->getMessage()}, File => {$e->getFile()}, Line No => {$e->getLine()}, Error Code => {$e->getCode()}.");
+
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred while fetching the topic.',
+                'data' => [],
+            ], 500);
+        }
+    }
+    public function subTopicContentView(SubTopicIdRequest $request)
+    {
+        try {
+            $subTopic = CourseSubTopic::with('test', 'courseTopic.courseAssignment.weeks')->find($request->input('sub_topic_id'));
+
+            if (!$subTopic) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid content type.',
+                    'data' => [],
+                ], 400);
+            }
+
+            $week = optional($subTopic->courseTopic->courseAssignment)->weeks;
+
+            if ($week && Carbon::parse($week->start_date)->isFuture()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Right now, you have no access to this content.',
+                    'data' => [],
+                ], 400);
+            }
+
+            if (!$week) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Something went wrong: week is invalid or missing.',
+                    'data' => [],
+                ], 400);
+            }
+
+
+            $data = [
+                'id' => $subTopic->id,
+                'topic_name' => optional($subTopic->courseTopic)->name,
+                'sub_topic_name' => $subTopic->name,
+                'sub_topic_media' => $subTopic->getMedia('content_upload')->map(fn($m) => [
+                    'url' => $m->getUrl(),
+                    'type' => $m->mime_type,
+                ]),
+                'sub_topic_test' => $subTopic->test->pluck('name', 'id'),
+            ];
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Data fetched successfully.',
+                'data' => $data,
+            ], 200);
+        } catch (\Exception $e) {
+            \Log::error("Failed to fetch the subtopic content. Message => {$e->getMessage()}, File => {$e->getFile()}, Line No => {$e->getLine()}, Error Code => {$e->getCode()}.");
+
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred while fetching the subtopic.',
+                'data' => [],
+            ], 500);
         }
     }
 
@@ -458,8 +654,4 @@ class AssignmentController extends Controller
             'data' => $tests,
         ], $tests->total() ? 200 : 404);
     }
-
-
 }
-// 2024-12-30 00:00:00
-// 2025-01-05 22:00:00

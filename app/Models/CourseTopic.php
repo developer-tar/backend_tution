@@ -32,4 +32,5 @@ class CourseTopic extends Model implements HasMedia {
     public function manageStudentRecord() {
         return $this->morphMany(ManageStudentRecord::class, 'model');
     }
+    
 }
