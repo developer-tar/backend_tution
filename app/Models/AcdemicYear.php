@@ -24,5 +24,8 @@ class AcdemicYear extends Model
     {
         return $this->belongsToMany(AcdemicCourse::class, 'academic_year_id');
     }
+    public function weeks(){
+        return $this->hasMany(Week::class, 'academic_year_id');
+    }
    
 }
