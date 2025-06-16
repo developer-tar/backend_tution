@@ -20,8 +20,6 @@ use App\Models\Subject;
 use App\Models\TargetSchool;
 use App\Models\Year;
 use Exception;
-
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Response;
 

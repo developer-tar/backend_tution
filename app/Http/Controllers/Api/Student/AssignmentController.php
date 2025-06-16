@@ -14,12 +14,12 @@ use App\Models\CourseSubTopic;
 use App\Models\CourseTest;
 use App\Models\CourseTopic;
 use App\Models\ManageStudentRecord;
-use App\Models\Week;
+use App\Models\User;
+use Illuminate\Support\Facades\Response;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Auth;
 
-
-class AssignmentController extends Controller
-{
+class AssignmentController extends Controller {
 
     // public function currentAssignment(CAssignmentRequest $request)
     // {
@@ -255,8 +255,7 @@ class AssignmentController extends Controller
     //     }
     // }
 
-    public function currentAssignment(CAssignmentRequest $request)
-    {
+    public function currentAssignment(CAssignmentRequest $request) {
         try {
             $userId = auth()->id();
             $subjectId = $request->subject_id;
@@ -325,11 +324,9 @@ class AssignmentController extends Controller
             \Log::error("Failed to fetch the current assignment. Message => {$e->getMessage()}, File => {$e->getFile()},  Line No => {$e->getLine()}, Error Code => {$e->getCode()}.");
             return sendError('Error', ['error' => 'An error is occured.'], 500);
         }
-
     }
 
-    public function topicContentView(TopicIdRequest $request)
-    {
+    public function topicContentView(TopicIdRequest $request) {
         try {
 
             $courseTopic = CourseTopic::with('courseTest', 'courseAssignment.weeks')->find($request->input('topic_id'));
@@ -387,15 +384,14 @@ class AssignmentController extends Controller
         }
     }
 
-    public function topicTest(TestIdRequest $request)
-    {
+    public function topicTest(TestIdRequest $request) {
         try {
 
             $topicTest = CourseTest::with('courseTopic.courseAssignment.weeks', 'question.options')
                 ->whereNull('course_sub_topic_id')
                 ->find($request->input('test_id'));
 
-                if (!$topicTest) {
+            if (!$topicTest) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Invalid content type.',
@@ -455,8 +451,52 @@ class AssignmentController extends Controller
             ], 500);
         }
     }
-    public function subTopicContentView(SubTopicIdRequest $request)
-    {
+    public function fetchSubjects() {
+
+        try {
+        \DB::listen(function ($query) {
+    \Log::info('SQL: ' . $query->sql);
+    \Log::info('Bindings: ', $query->bindings);
+});
+
+$user = User::with(['course' => function ($q) {
+    $q->whereNull('parent_id')->with('subjects');
+}])->find(6);
+            if ($user && $user->course->isNotEmpty()) {
+                $subjects = collect();
+
+                foreach ($user->course as $course) {
+                    $subjects = $subjects->merge(
+                        $course->subjects->map(function ($subject) {
+                            return [
+                                'id' => $subject->id,
+                                'name' => $subject->name,
+                            ];
+                        })
+                    );
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'data' => $subjects->values(),
+                    'message' => 'Subjects Fetched Successfully!!',
+                ], 200);
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No subjects found.',
+                ], 404);
+            }
+        } catch (\Exception $e) {
+            \Log::error("Fetching student subjects failed. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Error Code => {$e->getCode()}.");
+
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred while fetching subjects.',
+            ], 500);
+        }
+    }
+    public function subTopicContentView(SubTopicIdRequest $request) {
         try {
             $subTopic = CourseSubTopic::with('test', 'courseTopic.courseAssignment.weeks')->find($request->input('sub_topic_id'));
 
@@ -514,8 +554,7 @@ class AssignmentController extends Controller
         }
     }
 
-    private function fetchCourseTopics($assignmentIds, $subjectId)
-    {
+    private function fetchCourseTopics($assignmentIds, $subjectId) {
         $topics = CourseTopic::with('manageStudentRecord')
             ->whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $assignmentIds))
             ->where('subject_id', $subjectId)
@@ -540,8 +579,7 @@ class AssignmentController extends Controller
         ], $topics->total() ? 200 : 404);
     }
 
-    private function fetchCourseSubTopics($assignmentIds, $subjectId)
-    {
+    private function fetchCourseSubTopics($assignmentIds, $subjectId) {
         $topicIds = ManageStudentRecord::whereIn('parent_id', $assignmentIds)->pluck('id');
 
         if ($topicIds->isEmpty()) {
@@ -577,8 +615,7 @@ class AssignmentController extends Controller
         ], $subTopics->total() ? 200 : 404);
     }
 
-    private function fetchTopicTests($assignmentIds, $subjectId)
-    {
+    private function fetchTopicTests($assignmentIds, $subjectId) {
         $topicIds = ManageStudentRecord::whereIn('parent_id', $assignmentIds)->pluck('id');
 
         if ($topicIds->isEmpty()) {
@@ -615,8 +652,7 @@ class AssignmentController extends Controller
         ], $tests->total() ? 200 : 404);
     }
 
-    private function fetchSubTopicTests($assignmentIds, $subjectId)
-    {
+    private function fetchSubTopicTests($assignmentIds, $subjectId) {
         $topicIds = ManageStudentRecord::whereIn('parent_id', $assignmentIds)->pluck('id');
 
         if ($topicIds->isEmpty()) {
