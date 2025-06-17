@@ -15,9 +15,9 @@ use App\Models\CourseTest;
 use App\Models\CourseTopic;
 use App\Models\ManageStudentRecord;
 use App\Models\User;
-use Illuminate\Support\Facades\Response;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class AssignmentController extends Controller {
 
