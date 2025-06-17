@@ -356,12 +356,12 @@ class AssignmentController extends Controller {
                     'data' => [],
                 ], 400);
             }
-            dd(Media::get()->toArray());
-            dd($courseTopic->getMedia('content_upload')->pluck('mime_type'));
+           
+            dd($courseTopic->getMedia('course_image')->pluck('mime_type'));
             $data = [
                 'id' => $courseTopic->id,
                 'topic_name' => $courseTopic->name,
-                'topic_media' => $courseTopic->getMedia('content_upload')->map(fn($m) => [
+                'topic_media' => $courseTopic->getMedia('course_image')->map(fn($m) => [
                     'url' => $m->getUrl(),
                     'type' => $m->mime_type,
                 ]),
