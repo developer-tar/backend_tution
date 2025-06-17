@@ -257,13 +257,13 @@ class AssignmentController extends Controller {
 
     public function currentAssignment(CAssignmentRequest $request) {
         try {
-            $userId = auth()->id();
+            $userId = auth()->id(); 
             $subjectId = $request->subject_id;
             $chooseTitle = $request->choose_title;
             $date = Carbon::now();
 
             $contentType = config("constants.assignment_content.$chooseTitle");
-
+           
             // Step 1: Get ManageStudentRecord IDs linked to user via Course
             $courseIds = Course::whereHas(
                 'manageStudentRecord',
@@ -282,16 +282,16 @@ class AssignmentController extends Controller {
                     'data' => [],
                 ], 404);
             }
-
+          
             // Step 2: Get Assignment IDs linked to these courses and within date range
             $assignmentIds = CourseAssignment::with('manageStudentRecord', 'weeks')
                 ->whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $courseIds))
-                ->whereHas('weeks', fn($q) => $q->where('start_date', '<=', $date)->where('end_date', '>=', $date))
+                // ->whereHas('weeks', fn($q) => $q->where('start_date', '<=', $date)->where('end_date', '>=', $date))
                 ->get()
                 ->flatMap(fn($assignment) => $assignment->manageStudentRecord->pluck('id'))
                 ->unique()
                 ->values();
-
+        
             if ($assignmentIds->isEmpty()) {
                 return response()->json([
                     'success' => true,
@@ -458,7 +458,7 @@ class AssignmentController extends Controller {
                     $q->whereNull('parent_id')->with('subjects');
                 }
             ])->find(Auth::user()->id);
-            
+
             if ($user && $user->course->isNotEmpty()) {
                 $subjects = collect();
 
