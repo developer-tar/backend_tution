@@ -26,6 +26,6 @@ class UploadSingleContentFileJob implements ShouldQueue
     {
         $this->targetModel
             ->addMedia($this->file)
-            ->toMediaCollection('content_upload', 'public');
+            ->toMediaCollection('content_upload', 's3');
     }
 }
