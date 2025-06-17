@@ -356,6 +356,7 @@ class AssignmentController extends Controller {
                     'data' => [],
                 ], 400);
             }
+            dd(Media::all());
             dd($courseTopic->getMedia('content_upload')->pluck('mime_type'));
             $data = [
                 'id' => $courseTopic->id,
