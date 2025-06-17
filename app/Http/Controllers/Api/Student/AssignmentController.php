@@ -452,16 +452,13 @@ class AssignmentController extends Controller {
         }
     }
     public function fetchSubjects() {
-
         try {
-        \DB::listen(function ($query) {
-    \Log::info('SQL: ' . $query->sql);
-    \Log::info('Bindings: ', $query->bindings);
-});
-
-$user = User::with(['course' => function ($q) {
-    $q->whereNull('parent_id')->with('subjects');
-}])->find(6);
+            $user = User::with([
+                'course' => function ($q) {
+                    $q->whereNull('parent_id')->with('subjects');
+                }
+            ])->find(Auth::user()->id);
+            
             if ($user && $user->course->isNotEmpty()) {
                 $subjects = collect();
 
