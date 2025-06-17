@@ -357,7 +357,7 @@ class AssignmentController extends Controller {
                 ], 400);
             }
            
-            dd($courseTopic->getMedia('course_image')->pluck('mime_type'));
+        
             $data = [
                 'id' => $courseTopic->id,
                 'topic_name' => $courseTopic->name,
