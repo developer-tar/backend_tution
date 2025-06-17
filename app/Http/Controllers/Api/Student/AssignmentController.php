@@ -361,7 +361,7 @@ class AssignmentController extends Controller {
             $data = [
                 'id' => $courseTopic->id,
                 'topic_name' => $courseTopic->name,
-                'topic_media' => $courseTopic->getMedia('course_image')->map(fn($m) => [
+                'topic_media' => $courseTopic->getMedia('content_upload')->map(fn($m) => [
                     'url' => $m->getUrl(),
                     'type' => $m->mime_type,
                 ]),
