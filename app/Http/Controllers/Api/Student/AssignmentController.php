@@ -286,7 +286,7 @@ class AssignmentController extends Controller {
             // Step 2: Get Assignment IDs linked to these courses and within date range
             $assignmentIds = CourseAssignment::with('manageStudentRecord', 'weeks')
                 ->whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $courseIds))
-                // ->whereHas('weeks', fn($q) => $q->where('start_date', '<=', $date)->where('end_date', '>=', $date))
+                ->whereHas('weeks', fn($q) => $q->where('start_date', '<=', $date)->where('end_date', '>=', $date))
                 ->get()
                 ->flatMap(fn($assignment) => $assignment->manageStudentRecord->pluck('id'))
                 ->unique()
