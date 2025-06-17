@@ -356,7 +356,6 @@ class AssignmentController extends Controller {
                     'data' => [],
                 ], 400);
             }
-            dd($courseTopic->id);
 
             $data = [
                 'id' => $courseTopic->id,
