@@ -402,13 +402,13 @@ class AssignmentController extends Controller {
             $week = optional($topicTest->courseTopic->courseAssignment)->weeks;
             $now = Carbon::now();
 
-            if (!$now->between(Carbon::parse($week->start_date), Carbon::parse($week->end_date))) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Right now, you have no access to this give the test.',
-                    'data' => [],
-                ], 400);
-            }
+            // if (!$now->between(Carbon::parse($week->start_date), Carbon::parse($week->end_date))) {
+            //     return response()->json([
+            //         'success' => false,
+            //         'message' => 'Right now, you have no access to this give the test.',
+            //         'data' => [],
+            //     ], 400);
+            // }
 
             if (!$week) {
                 return response()->json([
@@ -422,6 +422,7 @@ class AssignmentController extends Controller {
                 return [
                     'id' => $question->id,
                     'name' => $question->name,
+                    'duration_in_sec' => $question->duration_in_sec,
                     'options' => $question->options->map(function ($option) {
                         return [
                             'id' => $option->id,
