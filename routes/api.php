@@ -26,6 +26,7 @@ Route::get('cart', [CartController::class, 'index']);
 Route::post('cart/add', [CartController::class, 'add']);
 Route::put('cart/update/{cart}', [CartController::class, 'update']);
 Route::delete('cart/remove/{cart}', [CartController::class, 'remove']);
-Route::get('course/view', [FrontendController::class, 'courseView']);
 
+//frontend api
+Route::get('course/view', [FrontendController::class, 'courseView']);
 Route::get('{slug}', [FrontendController::class, 'courseViewBySlug']);

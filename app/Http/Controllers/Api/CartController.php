@@ -80,7 +80,7 @@ class CartController extends Controller
         try {
             $userId = auth()->id();
             $sessionId = session()->getId();
-
+            dd($sessionId);
             // Verify ownership
             $isOwner = $userId
                 ? $cart->user_id === $userId
