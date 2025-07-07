@@ -14,12 +14,12 @@ use App\Models\CourseSubTopic;
 use App\Models\CourseTest;
 use App\Models\CourseTopic;
 use App\Models\ManageStudentRecord;
-use App\Models\Week;
+use App\Models\User;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Auth;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
-
-class AssignmentController extends Controller
-{
+class AssignmentController extends Controller {
 
     // public function currentAssignment(CAssignmentRequest $request)
     // {
@@ -255,16 +255,15 @@ class AssignmentController extends Controller
     //     }
     // }
 
-    public function currentAssignment(CAssignmentRequest $request)
-    {
+    public function currentAssignment(CAssignmentRequest $request) {
         try {
-            $userId = auth()->id();
+            $userId = auth()->id(); 
             $subjectId = $request->subject_id;
             $chooseTitle = $request->choose_title;
             $date = Carbon::now();
 
             $contentType = config("constants.assignment_content.$chooseTitle");
-
+           
             // Step 1: Get ManageStudentRecord IDs linked to user via Course
             $courseIds = Course::whereHas(
                 'manageStudentRecord',
@@ -283,7 +282,7 @@ class AssignmentController extends Controller
                     'data' => [],
                 ], 404);
             }
-
+          
             // Step 2: Get Assignment IDs linked to these courses and within date range
             $assignmentIds = CourseAssignment::with('manageStudentRecord', 'weeks')
                 ->whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $courseIds))
@@ -292,7 +291,7 @@ class AssignmentController extends Controller
                 ->flatMap(fn($assignment) => $assignment->manageStudentRecord->pluck('id'))
                 ->unique()
                 ->values();
-
+        
             if ($assignmentIds->isEmpty()) {
                 return response()->json([
                     'success' => true,
@@ -325,11 +324,9 @@ class AssignmentController extends Controller
             \Log::error("Failed to fetch the current assignment. Message => {$e->getMessage()}, File => {$e->getFile()},  Line No => {$e->getLine()}, Error Code => {$e->getCode()}.");
             return sendError('Error', ['error' => 'An error is occured.'], 500);
         }
-
     }
 
-    public function topicContentView(TopicIdRequest $request)
-    {
+    public function topicContentView(TopicIdRequest $request) {
         try {
 
             $courseTopic = CourseTopic::with('courseTest', 'courseAssignment.weeks')->find($request->input('topic_id'));
@@ -359,7 +356,8 @@ class AssignmentController extends Controller
                     'data' => [],
                 ], 400);
             }
-
+           
+        
 
             $data = [
                 'id' => $courseTopic->id,
@@ -387,15 +385,14 @@ class AssignmentController extends Controller
         }
     }
 
-    public function topicTest(TestIdRequest $request)
-    {
+    public function topicTest(TestIdRequest $request) {
         try {
 
             $topicTest = CourseTest::with('courseTopic.courseAssignment.weeks', 'question.options')
                 ->whereNull('course_sub_topic_id')
                 ->find($request->input('test_id'));
 
-                if (!$topicTest) {
+            if (!$topicTest) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Invalid content type.',
@@ -405,13 +402,13 @@ class AssignmentController extends Controller
             $week = optional($topicTest->courseTopic->courseAssignment)->weeks;
             $now = Carbon::now();
 
-            if (!$now->between(Carbon::parse($week->start_date), Carbon::parse($week->end_date))) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Right now, you have no access to this give the test.',
-                    'data' => [],
-                ], 400);
-            }
+            // if (!$now->between(Carbon::parse($week->start_date), Carbon::parse($week->end_date))) {
+            //     return response()->json([
+            //         'success' => false,
+            //         'message' => 'Right now, you have no access to this give the test.',
+            //         'data' => [],
+            //     ], 400);
+            // }
 
             if (!$week) {
                 return response()->json([
@@ -425,6 +422,7 @@ class AssignmentController extends Controller
                 return [
                     'id' => $question->id,
                     'name' => $question->name,
+                    'duration_in_sec' => $question->duration_in_sec,
                     'options' => $question->options->map(function ($option) {
                         return [
                             'id' => $option->id,
@@ -455,8 +453,49 @@ class AssignmentController extends Controller
             ], 500);
         }
     }
-    public function subTopicContentView(SubTopicIdRequest $request)
-    {
+    public function fetchSubjects() {
+        try {
+            $user = User::with([
+                'course' => function ($q) {
+                    $q->whereNull('parent_id')->with('subjects');
+                }
+            ])->find(Auth::user()->id);
+
+            if ($user && $user->course->isNotEmpty()) {
+                $subjects = collect();
+
+                foreach ($user->course as $course) {
+                    $subjects = $subjects->merge(
+                        $course->subjects->map(function ($subject) {
+                            return [
+                                'id' => $subject->id,
+                                'name' => $subject->name,
+                            ];
+                        })
+                    );
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'data' => $subjects->values(),
+                    'message' => 'Subjects Fetched Successfully!!',
+                ], 200);
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No subjects found.',
+                ], 404);
+            }
+        } catch (\Exception $e) {
+            \Log::error("Fetching student subjects failed. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Error Code => {$e->getCode()}.");
+
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred while fetching subjects.',
+            ], 500);
+        }
+    }
+    public function subTopicContentView(SubTopicIdRequest $request) {
         try {
             $subTopic = CourseSubTopic::with('test', 'courseTopic.courseAssignment.weeks')->find($request->input('sub_topic_id'));
 
@@ -514,8 +553,7 @@ class AssignmentController extends Controller
         }
     }
 
-    private function fetchCourseTopics($assignmentIds, $subjectId)
-    {
+    private function fetchCourseTopics($assignmentIds, $subjectId) {
         $topics = CourseTopic::with('manageStudentRecord')
             ->whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $assignmentIds))
             ->where('subject_id', $subjectId)
@@ -540,8 +578,7 @@ class AssignmentController extends Controller
         ], $topics->total() ? 200 : 404);
     }
 
-    private function fetchCourseSubTopics($assignmentIds, $subjectId)
-    {
+    private function fetchCourseSubTopics($assignmentIds, $subjectId) {
         $topicIds = ManageStudentRecord::whereIn('parent_id', $assignmentIds)->pluck('id');
 
         if ($topicIds->isEmpty()) {
@@ -577,8 +614,7 @@ class AssignmentController extends Controller
         ], $subTopics->total() ? 200 : 404);
     }
 
-    private function fetchTopicTests($assignmentIds, $subjectId)
-    {
+    private function fetchTopicTests($assignmentIds, $subjectId) {
         $topicIds = ManageStudentRecord::whereIn('parent_id', $assignmentIds)->pluck('id');
 
         if ($topicIds->isEmpty()) {
@@ -615,8 +651,7 @@ class AssignmentController extends Controller
         ], $tests->total() ? 200 : 404);
     }
 
-    private function fetchSubTopicTests($assignmentIds, $subjectId)
-    {
+    private function fetchSubTopicTests($assignmentIds, $subjectId) {
         $topicIds = ManageStudentRecord::whereIn('parent_id', $assignmentIds)->pluck('id');
 
         if ($topicIds->isEmpty()) {

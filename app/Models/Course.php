@@ -21,7 +21,7 @@ class Course extends Model implements HasMedia
     ];
     public function subjects()
     {
-        return $this->belongsToMany(Subject::class, 'course_subject', 'course_id', 'subject_id');
+        return $this->belongsToMany(Subject::class, 'course_subject', 'course_id', 'subject_id')->wherePivotNull('deleted_at');
     }
     public function locations()
     {
