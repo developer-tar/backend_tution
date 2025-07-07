@@ -118,5 +118,14 @@ return [
         'TopicTest' => 'App\Models\CourseTopicTest',
         'SubTopicTest' => 'App\Models\CourseSubTopicTest'
     ],
-
+    'product_types' => [
+        'course' => 1,
+        'mock' => 2,
+        'paper' => 3,
+    ],
+    'table_map' => [
+        'course' => 'courses',
+        'mock' => 'mocks',
+        'exam' => 'exams',
+    ],
 ];

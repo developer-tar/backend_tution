@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\AdminLoginRequest;
 use App\Http\Requests\Api\LoginRequest;
 use App\Http\Requests\Api\RegisterRequest;
+use App\Models\Cart;
 use App\Models\Role;
 use App\Models\User;
 use Exception;
@@ -73,12 +74,12 @@ class AuthController extends Controller
                     Log::error("Role not found", ['user' => $user]);
                     return sendError('Unauthorized', ['error' => 'Something went Wrong'], 500);
                 }
-                if($role && $request->filled('choose_the_role') && $role?->id != $request->choose_the_role){
+                if ($role && $request->filled('choose_the_role') && $role?->id != $request->choose_the_role) {
                     return sendError('Unauthorised', ['error' => "Credentails and user role has doesn't match"], 401);
-                } 
+                }
                 $status = $user->status;
                 if ($status == config('constants.statuses.APPROVED')) {
-                
+
                     $user = [
                         'id' => $user->id,
                         'full_name' => $user->full_name,
@@ -86,6 +87,9 @@ class AuthController extends Controller
                         'role' => $role?->name,
                         'access_token' => $user->createToken('accessToken', [$role?->name])->accessToken,
                     ];
+                    if ($role->name == config('constants.roles.PARENT')) {
+                        $this->_mergeGuestCart();
+                    }
                     $response = [
                         'success' => true,
                         'data' => $user,
@@ -102,6 +106,22 @@ class AuthController extends Controller
         } catch (Exception $e) {
             Log::error("Error occur login. Message => {$e->getMessage()}, File => {$e->getFile()},  Line No => {$e->getLine()}, Error Code => {$e->getCode()}.");
             return sendError('Error', ['error' => 'An error is occured.'], 500);
+        }
+    }
+    private function _mergeGuestCart()
+    {
+        $userId = auth()->id();
+        $sessionId = session()->getId();
+
+        $guestItems = Cart::where('session_id', $sessionId)->get();
+        if ($guestItems->IsNotEmpty()) {
+            foreach ($guestItems as $item) {
+                Cart::updateOrCreate(
+                    ['user_id' => $userId, 'product_id' => $item->product_id],
+                    ['quantity' => \DB::raw("quantity + {$item->quantity}")]
+                );
+                $item->delete();
+            }
         }
     }
 }

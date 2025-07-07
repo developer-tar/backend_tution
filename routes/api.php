@@ -1,11 +1,7 @@
 <?php
 
-use App\Http\Controllers\Api\CommonDataController;
-use App\Models\Role;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Api\AuthController;
-
+use App\Http\Controllers\Api\{CartController, AuthController, CommonDataController};
 
 //Testing api
 Route::get('/testing', function () {
@@ -23,3 +19,9 @@ Route::post('admin/login', [AuthController::class, 'AdminLogin']);
 //common data 
 Route::get('common/data', [CommonDataController::class, 'commonApi']);
 
+
+//cart api
+Route::get('cart', [CartController::class, 'index']);
+Route::post('cart/add', [CartController::class, 'add']);
+Route::put('cart/update/{cart}', [CartController::class, 'update']);
+Route::delete('cart/remove/{cart}', [CartController::class, 'remove']);

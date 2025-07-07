@@ -6,25 +6,12 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 
 use App\Http\Requests\Api\CheckQueryDataRequest;
-use App\Models\AcdemicYear;
-use App\Models\Course;
-use App\Models\Day;
-use App\Models\Gender;
-use App\Models\Location;
-use App\Models\Mode;
-use App\Models\Month;
-use App\Models\Region;
-use App\Models\Role;
 
-use App\Models\Subject;
-use App\Models\TargetSchool;
-use App\Models\Year;
+use App\Models\{AcdemicYear, Day, Gender, Location, Mode, Month, Region, Role, Subject, TargetSchool, Year};
+
 use Exception;
 
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Response;
-
+use Illuminate\Support\Facades\{Log, Response};
 class CommonDataController extends Controller
 {
 
