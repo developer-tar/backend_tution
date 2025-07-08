@@ -17,20 +17,18 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Response;
 
-class AuthController extends Controller
-{
+class AuthController extends Controller {
     /**
      * User login API method
      *
      * @param Request $request
      * @return \Illuminate\Http\JsonResponse
      */
-    public function AdminLogin(AdminLoginRequest $request)
-    {
+    public function AdminLogin(AdminLoginRequest $request) {
         return $this->authenticate($request);
     }
-    public function login(LoginRequest $request)
-    {
+    public function login(LoginRequest $request) {
+
         return $this->authenticate($request);
     }
     /**
@@ -39,8 +37,7 @@ class AuthController extends Controller
      * @param Request $request
      * @return \Illuminate\Http\JsonResponse
      */
-    public function register(RegisterRequest $request)
-    {
+    public function register(RegisterRequest $request) {
         try {
 
             DB::beginTransaction();
@@ -63,10 +60,11 @@ class AuthController extends Controller
             return sendResponse($success, 'Unable to create a new user.' . $e->getCode(), 500);
         }
     }
-    public function authenticate(Request $request)
-    {
+    public function authenticate(Request $request) {
         try {
             $credentials = $request->only('email', 'password');
+            $oldSessionId = session()->getId(); // guest session
+
             if (Auth::attempt($credentials)) {
                 $user = Auth::user();
                 $role = $user->roles()->first();
@@ -87,8 +85,10 @@ class AuthController extends Controller
                         'role' => $role?->name,
                         'access_token' => $user->createToken('accessToken', [$role?->name])->accessToken,
                     ];
+
                     if ($role->name == config('constants.roles.PARENT')) {
-                        $this->_mergeGuestCart();
+
+                        $this->_mergeGuestCart($oldSessionId);
                     }
                     $response = [
                         'success' => true,
@@ -99,7 +99,6 @@ class AuthController extends Controller
                 } else {
                     return sendError('Error', ['error' => 'This user is not active yet.'], 400);
                 }
-
             } else {
                 return sendError('Unauthorized', ['error' => 'Unauthorised'], 401);
             }
@@ -108,12 +107,10 @@ class AuthController extends Controller
             return sendError('Error', ['error' => 'An error is occured.'], 500);
         }
     }
-    private function _mergeGuestCart()
-    {
+    private function _mergeGuestCart($oldSessionId) {
         $userId = auth()->id();
-        $sessionId = session()->getId();
-
-        $guestItems = Cart::where('session_id', $sessionId)->get();
+       
+        $guestItems = Cart::where('session_id', $oldSessionId)->get();
         if ($guestItems->IsNotEmpty()) {
             foreach ($guestItems as $item) {
                 Cart::updateOrCreate(
@@ -125,4 +122,3 @@ class AuthController extends Controller
         }
     }
 }
-

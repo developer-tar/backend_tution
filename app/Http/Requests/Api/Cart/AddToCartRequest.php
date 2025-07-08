@@ -19,7 +19,7 @@ class AddToCartRequest extends FormRequest
 
         $tableMap = config('constants.table_map');
         $productTable = $tableMap[$productType] ?? 'courses';
-       
+        
         return [
             'product_type' => ['required', Rule::in(array_keys($tableMap))],
             'product_id' => ['required', "exists:{$productTable},id"],

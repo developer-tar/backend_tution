@@ -31,9 +31,9 @@ class UpdateCartRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'quantity.required' => 'Quantity is required.',
-            'quantity.integer' => 'Quantity must be an integer.',
-            'quantity.min' => 'Quantity must be at least 1.',
+            'quantity.required' => 'quantity is required.',
+            'quantity.integer' => 'quantity must be an integer.',
+            'quantity.min' => 'quantity must be at least 1.',
         ];
     }
 }
