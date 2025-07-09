@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\Parent\StudentController;
+use App\Http\Controllers\Api\PaymentController;
 use Illuminate\Support\Facades\Route;
 
 
@@ -20,3 +21,5 @@ Route::resource('add/student', StudentController::class);
 //end course routing
 
 //merge add to cart and update cart
+
+Route::post('checkout', [PaymentController::class, 'checkout']);
