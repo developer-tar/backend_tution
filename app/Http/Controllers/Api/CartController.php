@@ -26,6 +26,7 @@ class CartController extends Controller {
                 $cartItems = $cartItems->transform(function ($item) {
                     $course = $item->course;
                     return [
+                        'cart_id' => $item->id,
                         'course_name' => $course->name ?? 'Unknown Product',
                         'course_image' =>  $course->getFirstMediaUrl('course_image') ?? null,
                         'quantity' => $item->quantity ?? 1,
