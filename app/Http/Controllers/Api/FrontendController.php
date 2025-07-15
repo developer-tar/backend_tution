@@ -63,7 +63,7 @@ class FrontendController extends Controller
         foreach ($filters as $key => $value) {
             $query->where($key, $value);
         }
-
+       
         return $paginate
             ? $query->latest()->paginate(10)->through(fn($course) => $this->transformCourseData($course, true))
             : $query->get()->transform(fn($course) => $this->transformCourseData($course));
@@ -88,6 +88,7 @@ class FrontendController extends Controller
             : null;
 
         return [
+            'id' => $course->id,
             'acdemicyear' => $academicYear?->start_end_year,
             'name' => $course->name,
             'slug' => $course->slug,
