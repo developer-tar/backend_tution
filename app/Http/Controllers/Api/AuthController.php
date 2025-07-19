@@ -17,17 +17,58 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Response;
 
-class AuthController extends Controller {
+class AuthController extends Controller
+{
     /**
      * User login API method
      *
      * @param Request $request
      * @return \Illuminate\Http\JsonResponse
      */
-    public function AdminLogin(AdminLoginRequest $request) {
-        return $this->authenticate($request);
+    // public function AdminLogin(AdminLoginRequest $request)
+    public function AdminLogin(LoginRequest $request)
+    {
+        try {
+            $credentials = $request->only('email', 'password');
+            if (Auth::attempt($credentials)) {
+                $user = Auth::user();
+                $role = $user->roles()->first();
+                if (!$role) {
+                    Log::error("Role has not found", ['user' => $user]);
+                    return sendError('Not Found');
+                }
+                if($role?->name != config('constants.roles.ADMIN')){
+                      return sendError('Error', ['error' => 'Not Found ']);
+                }
+                if ($user->status == config('constants.statuses.APPROVED')) {
+
+                    $user = [
+                        'id' => $user->id,
+                        'full_name' => $user->full_name,
+                        'email' => $user->email,
+                        'role' => $role?->name,
+                        'access_token' => $user->createToken('accessToken', [$role?->name])->accessToken,
+                    ];
+                    $response = [
+                        'success' => true,
+                        'data' => $user,
+                        'message' => 'You are successfully logged in.',
+                    ];
+                    return Response::json($response, 200);
+                } else {
+                    return sendError('Error', ['error' => 'This user is not active yet.'], 400);
+                }
+            } else {
+                return sendError('Unauthorized', ['error' => 'Unauthorised'], 401);
+            }
+        } catch (Exception $e) {
+            Log::error("Error occur login. Message => {$e->getMessage()}, File => {$e->getFile()},  Line No => {$e->getLine()}, Error Code => {$e->getCode()}.");
+            return sendError('Error', ['error' => 'An error is occured.'], 500);
+        }
+
     }
-    public function login(LoginRequest $request) {
+    public function login(LoginRequest $request)
+    {
 
         return $this->authenticate($request);
     }
@@ -37,7 +78,8 @@ class AuthController extends Controller {
      * @param Request $request
      * @return \Illuminate\Http\JsonResponse
      */
-    public function register(RegisterRequest $request) {
+    public function register(RegisterRequest $request)
+    {
         try {
 
             DB::beginTransaction();
@@ -60,7 +102,8 @@ class AuthController extends Controller {
             return sendResponse($success, 'Unable to create a new user.' . $e->getCode(), 500);
         }
     }
-    public function authenticate(Request $request) {
+    public function authenticate(Request $request)
+    {
         try {
             $credentials = $request->only('email', 'password');
             $oldSessionId = session()->getId(); // guest session
@@ -69,9 +112,11 @@ class AuthController extends Controller {
                 $user = Auth::user();
                 $role = $user->roles()->first();
                 if (!$role) {
-                    Log::error("Role not found", ['user' => $user]);
-                    return sendError('Unauthorized', ['error' => 'Something went Wrong'], 500);
+                    Log::error("Role has not found", ['user' => $user]);
+                    return sendError('This user is not belong any role', ['error' => 'Something went Wrong'], 500);
                 }
+
+
                 if ($role && $request->filled('choose_the_role') && $role?->id != $request->choose_the_role) {
                     return sendError('Unauthorised', ['error' => "Credentails and user role has doesn't match"], 401);
                 }
@@ -107,9 +152,10 @@ class AuthController extends Controller {
             return sendError('Error', ['error' => 'An error is occured.'], 500);
         }
     }
-    private function _mergeGuestCart($oldSessionId) {
+    private function _mergeGuestCart($oldSessionId)
+    {
         $userId = auth()->id();
-       
+
         $guestItems = Cart::where('session_id', $oldSessionId)->get();
         if ($guestItems->IsNotEmpty()) {
             foreach ($guestItems as $item) {

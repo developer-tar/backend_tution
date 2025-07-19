@@ -27,7 +27,7 @@ class LoginRequest extends FormRequest
             [
                 'email' => 'required|email|exists:users,email',
                 'password' => 'required|min:8|max:10',
-                'choose_the_role' => ['required', 'integer', new ValidRoleLogin()],
+                'choose_the_role' => ['sometimes', 'integer', new ValidRoleLogin()],
             ];
     }
 }

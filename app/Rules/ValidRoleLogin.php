@@ -1,21 +1,24 @@
 <?php
 
 
-    namespace App\Rules;
+namespace App\Rules;
 
-    use Illuminate\Contracts\Validation\Rule;
-    use Illuminate\Support\Facades\DB;
+use App\Models\Role;
+use Illuminate\Contracts\Validation\Rule;
+use Illuminate\Support\Facades\DB;
 
-    class ValidRoleLogin implements Rule
+class ValidRoleLogin implements Rule
+{
+    public function passes($attribute, $value)
     {
-        public function passes($attribute, $value)
-        {
-            // Ensure role ID is not 1 and exists in the roles table
-            return in_array($value, [2, 3, 4]);
-        }
+        $roleIds = Role::whereNot('name', config('constants.roles.ADMIN'))->pluck('id')->toArray();
 
-        public function message()
-        {
-            return 'You are not authorized to login with this role.';
-        }
+        // Ensure role ID is not 1 and exists in the roles table
+        return in_array($value, $roleIds);
     }
+
+    public function message()
+    {
+        return 'You are not authorized to login with this role.';
+    }
+}
