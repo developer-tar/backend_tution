@@ -40,7 +40,7 @@ class TimeSlotController extends Controller
             return response()->json(['error' => 'This timeslot already exists.'], 400);
 
         } catch (Exception $e) {
-            dd($e->getMessage());
+           
             Log::error("Failed to save timeslot: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
             return response()->json(['error' => 'An error occurred while saving the timeslot.'], 500);
         }
