@@ -7,7 +7,7 @@ use App\Http\Controllers\Controller;
 
 use App\Http\Requests\Api\CheckQueryDataRequest;
 
-use App\Models\{AcdemicYear, Day, Gender, Location, Mode, Month, Region, Role, Subject, TargetSchool, Year};
+use App\Models\{AcdemicYear, Day, Gender, Location, Mode, Month, Region, Role, Subject, TargetSchool, Year, WeekDay};
 
 use Exception;
 
@@ -23,6 +23,7 @@ class CommonDataController extends Controller
                 $param = $request->param;
 
                 $modelMap = [
+                    'WeekDays' => WeekDay::class,
                     'Days' => Day::class,
                     'Months' => Month::class,
                     'Years' => Year::class,

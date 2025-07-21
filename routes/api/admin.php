@@ -1,11 +1,10 @@
 <?php
 
 
-use App\Http\Controllers\Api\Admin\Assign\AssignedStudentCourseController;
-use App\Http\Controllers\Api\Admin\Assign\AssignmentController;
-use App\Http\Controllers\Api\Admin\Assign\CourseContentTestController;
-use App\Http\Controllers\Api\Admin\Assign\CourseController;
-use App\Http\Controllers\Api\Admin\Assign\TopicSubTopicController;
+use App\Http\Controllers\Api\Admin\Assign\{AssignedStudentCourseController, AssignmentController, CourseContentTestController};
+
+use App\Http\Controllers\Api\Admin\Assign\{CourseController, TopicSubTopicController, TimeSlotController};
+
 use Illuminate\Support\Facades\Route;
 
 
@@ -47,3 +46,7 @@ Route::get('ca_records', [AssignmentController::class, 'courseAcdemicRecords']);
 Route::get('fetch/student/list/{acdemic_course_id}', [AssignedStudentCourseController::class, 'fetchStudentList']);
 Route::post('assign/course/student', [AssignedStudentCourseController::class, 'store']);
 
+
+//location based timeslot to the course
+Route::post('/ca_based_locations/{ca_id}', [TimeSlotController::class, 'getLocation']);
+Route::post('save/and/next/timeslot', [TimeSlotController::class, 'saveAndNext']);
