@@ -46,7 +46,7 @@ class TimeSlotController extends Controller
         }
     }
     public function getLocation(){
-        return 
+        // return 
     }
     /**
      * Check for overlapping time slots
