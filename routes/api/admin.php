@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Route;
 | be assigned to the "api" middleware group. Make something great!
 |
 */
+Route::get('ca_based_locations/{ca}', [TimeSlotController::class, 'getLocation']);
 // start course routing 
 Route::resource('assign/course', CourseController::class);
 
@@ -48,5 +49,5 @@ Route::post('assign/course/student', [AssignedStudentCourseController::class, 's
 
 
 //location based timeslot to the course
-Route::post('/ca_based_locations/{ca_id}', [TimeSlotController::class, 'getLocation']);
+// Route::get('ca_based_locations/{ca}', [TimeSlotController::class, 'getLocation']);
 Route::post('save/and/next/timeslot', [TimeSlotController::class, 'saveAndNext']);
