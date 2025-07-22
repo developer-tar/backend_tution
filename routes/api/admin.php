@@ -4,8 +4,9 @@
 use App\Http\Controllers\Api\Admin\Assign\{AssignedStudentCourseController, AssignmentController, CourseContentTestController};
 
 use App\Http\Controllers\Api\Admin\Assign\{CourseController, TopicSubTopicController, TimeSlotController};
-
+use App\Models\AcdemicCourse;
 use Illuminate\Support\Facades\Route;
+use App\Models\User;
 
 
 /*
@@ -18,7 +19,15 @@ use Illuminate\Support\Facades\Route;
 | be assigned to the "api" middleware group. Make something great!
 |
 */
-Route::get('ca_based_locations/{ca}', [TimeSlotController::class, 'getLocation']);
+
+Route::get('/users/{user}', function (User $user) {
+    dd($user);
+  return $user->id;
+});
+// Route::get('/users/{id}', function ($id) {
+//     return User::find($id) ?: 'Not found';
+// });
+// Route::get('ca_based_locations/{AcdemicCourse}', [TimeSlotController::class, 'getLocation']);
 // start course routing 
 Route::resource('assign/course', CourseController::class);
 

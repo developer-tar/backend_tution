@@ -12,12 +12,13 @@ use Exception;
 use Illuminate\Http\Request;
 
 class TimeSlotController extends Controller {
-    public function getLocation(AcdemicCourse $ca) {
-        if (!$ca->exists) {
+    public function getLocation(AcdemicCourse $AcdemicCourse) {
+        dd($AcdemicCourse);
+        if (!$AcdemicCourse->exists) {
             throw new \Exception('Model binding failed!');
         }
 
-        dd($ca);
+        dd($AcdemicCourse);
     }
     public function saveAndNext(TimeSlotRequest $request) {
         try {
