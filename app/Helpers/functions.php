@@ -7,7 +7,9 @@ use App\Models\CourseQuestion;
 use App\Models\CourseSubTopic;
 use App\Models\CourseTest;
 use App\Models\CourseTopic;
+use App\Models\ErrorLog;
 use App\Models\ManageStudentRecord;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Response;
 
 
@@ -227,5 +229,11 @@ function createOptions(array $optionIds, array $questionRecords, $courseRecord) 
             }
         }
     }
+}
+function errorLog($message) {
+    $errorLog = new ErrorLog();
+    $errorLog->error = $message;
+    $errorLog->save();
+    Log::error($message);
 }
 

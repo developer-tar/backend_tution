@@ -20,14 +20,6 @@ use App\Models\User;
 |
 */
 
-Route::get('/users/{user}', function (User $user) {
-    dd($user);
-  return $user->id;
-});
-// Route::get('/users/{id}', function ($id) {
-//     return User::find($id) ?: 'Not found';
-// });
-// Route::get('ca_based_locations/{AcdemicCourse}', [TimeSlotController::class, 'getLocation']);
 // start course routing 
 Route::resource('assign/course', CourseController::class);
 
@@ -58,5 +50,7 @@ Route::post('assign/course/student', [AssignedStudentCourseController::class, 's
 
 
 //location based timeslot to the course
-// Route::get('ca_based_locations/{ca}', [TimeSlotController::class, 'getLocation']);
+Route::get('course/timeslot', [TimeSlotController::class, 'index']);
+Route::get('course/location/timeslot/{academic_course_id}/{location_id}/{weekday_id}', [TimeSlotController::class, 'getTimeSlot']);
+Route::get('ca_based_location/{ca}', [TimeSlotController::class, 'getLocation']);
 Route::post('save/and/next/timeslot', [TimeSlotController::class, 'saveAndNext']);

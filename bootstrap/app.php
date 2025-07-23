@@ -7,6 +7,7 @@ use Laravel\Passport\Http\Middleware\CheckToken;
 use Illuminate\Http\JsonResponse;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Routing\Middleware\SubstituteBindings;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -15,7 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
         api: __DIR__ . '/../routes/api.php',
         then: function () {
-            Route::middleware('auth:api')->group(function () {
+            Route::middleware(['auth:api', 'SubstituteBindings'])->group(function () {
                 Route::middleware(CheckToken::using('Admin'))->prefix('api/admin')->group(base_path('routes/api/admin.php'));
                 Route::middleware(CheckToken::using('Tutor'))->prefix('api/tutor')->group(base_path('routes/api/tutor.php'));
                 Route::middleware(CheckToken::using('Student'))->prefix('api/student')->group(base_path('routes/api/student.php'));
@@ -25,11 +26,8 @@ return Application::configure(basePath: dirname(__DIR__))
     )
 
     ->withMiddleware(function (Middleware $middleware) {
-        $middleware->group('api', [
-            // \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
-            // 'throttle:api',
-            \Illuminate\Routing\Middleware\SubstituteBindings::class,
-            \Illuminate\Http\Middleware\HandleCors::class
+        $middleware->alias([
+            'SubstituteBindings' => SubstituteBindings::class
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

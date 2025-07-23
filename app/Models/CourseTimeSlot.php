@@ -16,4 +16,10 @@ class CourseTimeSlot extends Model
         'status',
         'seats',
     ];
+    public function locations(){
+        return $this->belongsTo(Course::class,'location_id', 'id');
+    }
+    public function courses(){
+        return $this->belongsTo(Course::class,'course_id', 'id');
+    }
 }
