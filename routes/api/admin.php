@@ -51,6 +51,9 @@ Route::post('assign/course/student', [AssignedStudentCourseController::class, 's
 
 //location based timeslot to the course
 Route::get('course/timeslot', [TimeSlotController::class, 'index']);
-Route::get('course/location/timeslot/{academic_course_id}/{location_id}/{weekday_id}', [TimeSlotController::class, 'getTimeSlot']);
-Route::get('ca_based_location/{ca}', [TimeSlotController::class, 'getLocation']);
-Route::post('save/and/next/timeslot', [TimeSlotController::class, 'saveAndNext']);
+Route::get('timeslot/{timeslot}', [TimeSlotController::class, 'show']);
+Route::post('timeslot', [TimeSlotController::class, 'save']);
+Route::patch('timeslot', [TimeSlotController::class, 'update']);
+Route::delete('timeslot/{timeslot}', [TimeSlotController::class, 'destroy']);
+Route::get('ca_based_location/{ca}', [TimeSlotController::class, 'getLocation']); //get the location based on acdemic course
+Route::get('course/location/timeslot/{academic_course_id}/{location_id}/{weekday_id}', [TimeSlotController::class, 'getTimeSlot']); //for fetch the data in saving the data 

@@ -29,9 +29,8 @@ function sendResponse($result = 'delete', $message, $code = 200) {
         'message' => $message,
     ];
     if ($response['data'] == 'delete')
-        unset($repsonse['data']);
+        unset($response['data']);
     return response()->json($response, $code);
-    // return Response::json($response, $code);
 }
 /**
  * Return error response
@@ -235,5 +234,6 @@ function errorLog($message) {
     $errorLog->error = $message;
     $errorLog->save();
     Log::error($message);
+    return sendError('Error', ['error' => 'An error occurred.'], 500);
 }
 
