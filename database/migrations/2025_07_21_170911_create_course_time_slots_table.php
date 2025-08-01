@@ -14,15 +14,14 @@ return new class extends Migration {
             $table->id();
 
             $table->foreignId('course_id')->constrained('courses');
-            
-            $table->foreignId('academic_course_id')->constrained('acdemic_course'); // ✅ Corrected spelling
+            $table->foreignId('academic_course_id')->constrained('acdemic_course');
             $table->foreignId('location_id')->constrained('locations');
             $table->foreignId('weekday_id')->constrained('week_days');
-
-            $table->string('start_time'); // format: HH:MM
+            
+            $table->string('start_time');
             $table->string('end_time');
             $table->tinyInteger('seats');
-
+            $table->string('class_name');
             $table->softDeletes();
             $table->timestamps();
         });

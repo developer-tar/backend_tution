@@ -17,6 +17,7 @@ class CourseTimeSlot extends Model {
         'end_time',
         'status',
         'seats',
+        'class_name'
     ];
     public static function storeTimeSlot(array $data): array {
         $timeSlot = self::firstOrCreate([
@@ -28,6 +29,7 @@ class CourseTimeSlot extends Model {
             'end_time'            => $data['end_time'],
         ], [
             'seats'               => $data['seats'],
+            'class_name'          => $data['class_name'],
         ]);
 
         if ($timeSlot->wasRecentlyCreated) {
@@ -81,6 +83,28 @@ class CourseTimeSlot extends Model {
                 ];
             });
     }
+    public static function updateTimeSlot(array $data): array {
+        
+        $timeSlot = self::find($data['timeslot_id']);
+
+        $timeSlot->update([
+            'course_id'           => $data['course_id'],
+            'academic_course_id'  => $data['academic_course_id'],
+            'weekday_id'          => $data['weekday_id'],
+            'location_id'         => $data['location_id'],
+            'start_time'          => $data['start_time'],
+            'end_time'            => $data['end_time'],
+            'seats'               => $data['seats'],
+            'class_name'          => $data['class_name'],
+        ]);
+
+        return [
+            'success' => true,
+            'timeslot' => $timeSlot,
+            'message' => 'Timeslot has been updated successfully.'
+        ];
+    }
+
     public function locations() {
         return $this->belongsTo(Location::class, 'location_id', 'id');
     }

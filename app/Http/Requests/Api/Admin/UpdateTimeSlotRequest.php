@@ -3,13 +3,12 @@
 namespace App\Http\Requests\Api\Admin;
 
 use App\Models\AcdemicCourse;
-use App\Models\Course;
 use App\Models\CourseTimeSlot;
 use Carbon\Carbon;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
-class TimeSlotRequest extends FormRequest {
+class UpdateTimeSlotRequest extends FormRequest {
 
     /**
      * Determine if the user is authorized to make this request.
@@ -33,6 +32,7 @@ class TimeSlotRequest extends FormRequest {
             'seats' => 'required|integer|min:1',
             'course_id' => 'nullable|exists:courses,id',
             'class_name' => 'required|string|max:255',
+            'timeslot_id' => 'required|exists:course_time_slots,id',
         ];
     }
 
@@ -57,6 +57,8 @@ class TimeSlotRequest extends FormRequest {
             'course_name.required' => 'Class name is required.',
             'course_name.string' => 'Class name must be a string.',
             'course_name.max' => 'Class name must not exceed 255 characters.',
+            'timeslot_id.required' => 'Timeslot ID is required.',
+            'timeslot_id.exists' => 'Timeslot not found.',
         ];
     }
 
@@ -124,13 +126,14 @@ class TimeSlotRequest extends FormRequest {
         $weekdayId = $this->input('weekday_id');
         $startTime = $this->input('start_time');
         $endTime = $this->input('end_time');
+        $timeslotId = $this->input('timeslot_id');
 
-        if ($this->_isOverlapping($courseId, $locationId, $weekdayId, $startTime, $endTime)) {
+        if ($this->_isOverlapping($courseId, $locationId, $weekdayId, $startTime, $endTime, $timeslotId)) {
             $validator->errors()->add('end_time', 'This timeslot overlaps with another.');
         }
     }
 
-    private function _isOverlapping($courseId, $locationId, $weekdayId, $newStart, $newEnd) {
+    private function _isOverlapping($courseId, $locationId, $weekdayId, $newStart, $newEnd, $timeslotId) {
         return CourseTimeSlot::where('course_id', $courseId)
             ->where('location_id', $locationId)
             ->where('weekday_id', $weekdayId)
@@ -140,6 +143,7 @@ class TimeSlotRequest extends FormRequest {
                         ->where('end_time', '>', $newStart);
                 });
             })
+            ->whereNot('id', $timeslotId)
             ->exists();
     }
 }

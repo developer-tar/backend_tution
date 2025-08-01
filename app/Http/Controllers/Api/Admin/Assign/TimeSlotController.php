@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Admin\Assign;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\Admin\TimeSlotRequest;
+use App\Http\Requests\Api\Admin\UpdateTimeSlotRequest;
 use App\Models\AcdemicCourse;
 use App\Models\CourseTimeSlot;
 use App\Models\Location;
@@ -64,8 +65,16 @@ class TimeSlotController extends Controller {
             errorLog("Failed to fetch the location: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
-    public function update(CourseTimeSlot $timeSlot){
-        
+    public function update(UpdateTimeSlotRequest $request) {
+        try {
+            $result = CourseTimeSlot::updateTimeSlot($request->validated());
+
+            return $result['success']
+                ? sendResponse(['timeslot_id' => $result['timeslot']->id], $result['message'], 201)
+                : sendError('Error', ['error' => $result['message']], 400);
+        } catch (Exception $e) {
+            errorLog("Failed to update timeslot: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+        }
     }
     public function getTimeSlot($aCId, $locId, $wId) {
         try {
