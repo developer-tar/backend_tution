@@ -4,7 +4,6 @@ namespace Database\Seeders;
 
 use App\Models\Day;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\DB;
 
 class DaysTableSeeder extends Seeder {
     public function run(): void {

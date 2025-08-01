@@ -23,7 +23,7 @@ class TimeSlotController extends Controller {
                 ? sendResponse($data, "Location fetch successfully!!")
                 : sendError('Not Found');
         } catch (Exception $e) {
-            errorLog("Failed to fetch the location: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+            return errorLog("Failed to fetch the location: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
 
@@ -38,7 +38,7 @@ class TimeSlotController extends Controller {
 
             return sendError('Not Found');
         } catch (Exception $e) {
-            errorLog("Failed to fetch timeslots: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+            return errorLog("Failed to fetch timeslots: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
 
@@ -51,7 +51,7 @@ class TimeSlotController extends Controller {
                 ? sendResponse(['timeslot_id' => $result['timeslot']->id], $result['message'], 201)
                 : sendError('Error', ['error' => $result['message']], 400);
         } catch (Exception $e) {
-            errorLog("Failed to save timeslot: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+            return errorLog("Failed to save timeslot: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
 
@@ -62,7 +62,7 @@ class TimeSlotController extends Controller {
 
             return sendResponse($data, "Timeslot fetch successfully!!");
         } catch (Exception $e) {
-            errorLog("Failed to fetch the location: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+            return errorLog("Failed to fetch the location: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
     public function update(UpdateTimeSlotRequest $request) {
@@ -73,7 +73,7 @@ class TimeSlotController extends Controller {
                 ? sendResponse(['timeslot_id' => $result['timeslot']->id], $result['message'], 201)
                 : sendError('Error', ['error' => $result['message']], 400);
         } catch (Exception $e) {
-            errorLog("Failed to update timeslot: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+            return errorLog("Failed to update timeslot: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
     public function getTimeSlot($aCId, $locId, $wId) {
@@ -84,7 +84,7 @@ class TimeSlotController extends Controller {
                 ? sendResponse($data, "Timeslot fetch successfully!!")
                 : sendError('Not Found');
         } catch (Exception $e) {
-            errorLog("Failed to fetch timeslot: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+            return errorLog("Failed to fetch timeslot: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
 
@@ -94,7 +94,7 @@ class TimeSlotController extends Controller {
                 ? sendResponse("delete", "Timeslot has been deleted successfully!!")
                 : sendError('Not Found');
         } catch (Exception $e) {
-            errorLog("Failed to delete timeslot: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+            return errorLog("Failed to delete timeslot: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
 }

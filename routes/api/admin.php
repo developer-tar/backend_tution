@@ -4,10 +4,7 @@
 use App\Http\Controllers\Api\Admin\Assign\{AssignedStudentCourseController, AssignmentController, CourseContentTestController};
 
 use App\Http\Controllers\Api\Admin\Assign\{CourseController, TopicSubTopicController, TimeSlotController};
-use App\Models\AcdemicCourse;
 use Illuminate\Support\Facades\Route;
-use App\Models\User;
-
 
 /*
 |--------------------------------------------------------------------------

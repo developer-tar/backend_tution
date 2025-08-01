@@ -35,8 +35,8 @@ return [
     ],
     'stripe' => [
         'product_id' => env('PRODUCT_ID'),
-        'sk_test' => env('SK_TEST'),
-        'pk_test' => env('PK_TEST'),
+        'sk_test' => env('STRIPE_SECRET'),
+        'pk_test' => env('STRIPE_KEY'),
     ]
 
 ];

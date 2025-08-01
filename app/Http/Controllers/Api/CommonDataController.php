@@ -7,7 +7,7 @@ use App\Http\Controllers\Controller;
 
 use App\Http\Requests\Api\CheckQueryDataRequest;
 
-use App\Models\{AcdemicYear, Day, Gender, Location, Mode, Month, Region, Role, Subject, TargetSchool, Year, WeekDay};
+use App\Models\{AcdemicYear, BillingPeriod, Day, Gender, Location, Mode, Month, Region, Role, Subject, TargetSchool, Year, WeekDay};
 
 use Exception;
 
@@ -33,7 +33,8 @@ class CommonDataController extends Controller
                     'Modes' => Mode::class,
                     'Regions' => Region::class,
                     'Genders' => Gender::class,
-                    'TargetSchools' => TargetSchool::class
+                    'TargetSchools' => TargetSchool::class,
+                    'BillingPeriods' => BillingPeriod::class,
                 ];
                 if ($param === 'Roles') {
                     $data = Role::select('id', 'name')

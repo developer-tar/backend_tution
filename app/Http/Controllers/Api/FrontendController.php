@@ -9,10 +9,8 @@ use Exception;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
 
-class FrontendController extends Controller
-{
-    public function courseView()
-    {
+class FrontendController extends Controller {
+    public function courseView() {
         try {
             $courses = $this->fetchCourses();
 
@@ -27,8 +25,7 @@ class FrontendController extends Controller
         }
     }
 
-    public function courseViewBySlug(SlugValidateRequest $request)
-    {
+    public function courseViewBySlug(SlugValidateRequest $request) {
         try {
             $courses = $this->fetchCourses(['slug' => $request->input('slug')], false);
 
@@ -50,20 +47,24 @@ class FrontendController extends Controller
      * @param bool $paginate
      * @return mixed
      */
-    private function fetchCourses(array $filters = [], bool $paginate = true)
-    {
+    private function fetchCourses(array $filters = [], bool $paginate = true) {
         $query = Course::with([
             'subjects:id,name',
             'locations:id,name',
             'modes:id,name',
             'features:id,name,course_id',
             'acdemicyears.weeks',
+            'prices:id,course_id,amount,billing_period_id,currency',
+            'prices.billingPeriod:id,name',
+            'slots:id,course_id,location_id,start_time,end_time,weekday_id,class_name,remaining_seats',
+            'slots.locations:id,name',
+            'slots.weekDays:id,name'
         ])->where('status', config('constants.statuses.APPROVED'));
 
         foreach ($filters as $key => $value) {
             $query->where($key, $value);
         }
-       
+
         return $paginate
             ? $query->latest()->paginate(10)->through(fn($course) => $this->transformCourseData($course, true))
             : $query->get()->transform(fn($course) => $this->transformCourseData($course));
@@ -76,8 +77,7 @@ class FrontendController extends Controller
      * @param bool $limitDescription
      * @return array
      */
-    private function transformCourseData($course, bool $limitDescription = false): array
-    {
+    private function transformCourseData($course, bool $limitDescription = false): array {
         $academicYear = $course->acdemicyears->first();
         $weeks = $academicYear?->weeks ?? collect();
         $firstWeekStart = $weeks->first()?->start_date;
@@ -93,16 +93,37 @@ class FrontendController extends Controller
             'name' => $course->name,
             'slug' => $course->slug,
             'subjects' => $course->subjects->pluck('name'),
-            'locations' => $course->locations->pluck('name'),
+            'locations' => $course->locations->map(function ($location) use ($course) {
+                $locationSlots = $course->slots
+                    ->where('location_id', $location->id)
+                    ->map(function ($slot) {
+                        return [
+                            'class' => $slot->class_name,
+                            'weekday' => $slot->weekDays?->name ?? null,
+                            'start_end_time' => $slot->start_time . ' - ' . $slot->end_time,
+                            'seat_left' => $slot->remaining_seats ?? 0,
+                        ];
+                    })
+                    ->values();
+
+                return [
+                    'name' => $location->name,
+                    'slots' => $locationSlots,
+                ];
+            }),
             'modes' => $course->modes->pluck('name'),
             'features' => $course->features?->pluck('name') ?? [],
             'image' => $course->getFirstMediaUrl('course_image') ?? null,
-            'price' => $course->amount,
+
             'description' => $limitDescription
                 ? Str::limit($course->description, 50)
                 : ($course->description ?? null),
             'weeks_count' => $weeks->count(),
             'start_end_date' => $startEndDate,
+            'prices' => collect($course->prices)->mapWithKeys(function ($price) {
+                $key = $price->billingPeriod->name;
+                return [$key => $price->currency . '' . (float) $price->amount];
+            }),
         ];
     }
 }

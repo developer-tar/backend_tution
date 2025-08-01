@@ -130,4 +130,15 @@ return [
     ],
     'week_days' => [1 => 'Monday', 2 => 'Tuesday', 3 => 'Wednesday', 4 => 'Thursday', 5 => 'Friday', 6 => 'Saturday', 7 => 'Sunday'],
     'gap_between_start_end_time' => 29,
+    'billing_cycle' => [
+        ['period' => 1, 'name' => 'MONTHLY'],
+        ['period' => 3, 'name' => '3 MONTHS'],
+        ['period' => 6, 'name' => '6 MONTHS'],
+        ['period' => 12, 'name' => '12 MONTHS'],
+    ],
+    'currency' => [
+        '€' => 'eur',
+        '$' => 'usd',
+        '£' => 'gbp',
+    ],
 ];
