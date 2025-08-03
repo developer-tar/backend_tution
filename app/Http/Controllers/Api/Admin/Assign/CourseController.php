@@ -105,9 +105,9 @@ class CourseController extends Controller {
                 $courseObj->prices()->create($coursePriceData);
             }); //create course prices for each billing period
 
-            if ($request->hasFile('course_image')) {
-                UploadCourseImageJob::dispatch($courseObj, $request->file('course_image'));
-            }
+            // if ($request->hasFile('course_image')) {
+            //     UploadCourseImageJob::dispatch($courseObj, $request->file('course_image'));
+            // }
 
             $subjectData = collect($request->subject_ids)->mapWithKeys(fn($id) => [
                 $id => ['created_at' => now(), 'updated_at' => now()]

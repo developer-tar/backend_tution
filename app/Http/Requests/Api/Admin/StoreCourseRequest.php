@@ -12,6 +12,10 @@ class StoreCourseRequest extends FormRequest {
 
     public function rules(): array {
         $billingCycles = BillingPeriod::pluck('id')->toArray();
+        if($this->input('type_of_modes')) {
+            $modeName = Mode::find($this->input('type_of_modes'))->value('name');
+        }
+   
         return array_merge(
             [
                 'name' => ['required', 'string', 'max:100', 'unique:courses,name'],
@@ -33,11 +37,16 @@ class StoreCourseRequest extends FormRequest {
                 'description' => ['required', 'string', 'min:500', 'max:10000'],
             ],
 
-            collect($billingCycles)->mapWithKeys(function ($cycle) {
+            collect($billingCycles)->mapWithKeys(function ($cycle) use( $modeName) {
+                if($modeName == 'In person'){
+                    $cycle
+                }
                 return [
-                    "amount_$cycle" => ['required', 'numeric', 'regex:/^\d{1,6}(\.\d{1,2})?$/']
+                    
+                    "amount_$cycle" => ['at_least_one', 'numeric', 'regex:/^\d{1,6}(\.\d{1,2})?$/']
                 ];
             })->toArray()
+
         );
     }
 
