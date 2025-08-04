@@ -80,6 +80,7 @@ class CourseController extends Controller {
      */
     public function store(StoreCourseRequest $request) {
         try {
+
             DB::beginTransaction();
 
             $courseData = [
@@ -97,12 +98,14 @@ class CourseController extends Controller {
 
             BillingPeriod::all()->each(function ($billingPeriod) use ($courseObj, $data) {
                 $billingId = $billingPeriod->id;
-                $coursePriceData = [
-                    'course_id' => $courseObj->id,
-                    'billing_period_id' => $billingId,
-                    'amount' => $data["amount_{$billingId}"],
-                ];
-                $courseObj->prices()->create($coursePriceData);
+                if (isset($data["amount_{$billingId}"])) {
+                    $coursePriceData = [
+                        'course_id' => $courseObj->id,
+                        'billing_period_id' => $billingId,
+                        'amount' => $data["amount_{$billingId}"],
+                    ];
+                    $courseObj->prices()->create($coursePriceData);
+                }
             }); //create course prices for each billing period
 
             // if ($request->hasFile('course_image')) {
