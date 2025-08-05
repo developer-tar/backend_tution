@@ -9,6 +9,7 @@ use App\Jobs\CreateStripePrice;
 use App\Jobs\UploadCourseImageJob;
 use App\Models\BillingPeriod;
 use App\Models\Course;
+use App\Models\Mode;
 use Exception;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -98,14 +99,38 @@ class CourseController extends Controller {
 
             BillingPeriod::all()->each(function ($billingPeriod) use ($courseObj, $data) {
                 $billingId = $billingPeriod->id;
-                if (isset($data["amount_{$billingId}"])) {
+                if(isset($data["amount_for_online_{$billingId}"])) {
+                    $onlineRecord = Mode::where(['id' => $data['type_of_modes']])
+                        ->where('name', 'Online')
+                        ->value('id');
                     $coursePriceData = [
                         'course_id' => $courseObj->id,
                         'billing_period_id' => $billingId,
-                        'amount' => $data["amount_{$billingId}"],
+                        'amount' => $data["amount_for_online_{$billingId}"],
+                         'mode_id' => $onlineRecord,
                     ];
                     $courseObj->prices()->create($coursePriceData);
                 }
+                if(isset($data["amount_for_online_{$billingId}"])) {
+                    $inPersonRecord = Mode::where(['id' => $data['type_of_modes']])
+                        ->where('name', 'In person')
+                        ->value('id');
+                    $coursePriceData = [
+                        'course_id' => $courseObj->id,
+                        'billing_period_id' => $billingId,
+                        'amount' => $data["amount_for_online_{$billingId}"],
+                         'mode_id' => $inPersonRecord,
+                    ];
+                    $courseObj->prices()->create($coursePriceData);
+                }
+                // if (isset($data["amount_{$billingId}"])) {
+                //     $coursePriceData = [
+                //         'course_id' => $courseObj->id,
+                //         'billing_period_id' => $billingId,
+                //         'amount' => $data["amount_{$billingId}"],
+                //     ];
+                //     $courseObj->prices()->create($coursePriceData);
+                // }
             }); //create course prices for each billing period
 
             // if ($request->hasFile('course_image')) {

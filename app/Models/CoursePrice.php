@@ -10,6 +10,7 @@ class CoursePrice extends Model
         'course_id',
         'billing_period_id',
         'stripe_product_id',
+        'mode_id',
         'stripe_price_id',
         'currency',
         'amount',
