@@ -23,4 +23,8 @@ class CoursePrice extends Model
     {
         return $this->belongsTo(BillingPeriod::class, 'billing_period_id', 'id');
     }
+    public function mode()
+    {
+        return $this->belongsTo(Mode::class, 'mode_id', 'id');
+    }
 }

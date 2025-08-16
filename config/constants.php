@@ -141,4 +141,5 @@ return [
         '$' => 'usd',
         '£' => 'gbp',
     ],
+    'dummy_image' => 'https://images.pexels.com/photos/674010/pexels-photo-674010.jpeg',
 ];

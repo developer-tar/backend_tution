@@ -46,4 +46,7 @@ class Course extends Model implements HasMedia {
     public function slots() {
         return $this->hasMany(CourseTimeSlot::class, 'course_id', 'id');
     } 
+    public function modefeatures() {
+        return $this->hasMany(CourseModeFeature::class, 'course_id', 'id');
+    }
 }

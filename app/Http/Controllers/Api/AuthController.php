@@ -37,8 +37,8 @@ class AuthController extends Controller
                     Log::error("Role has not found", ['user' => $user]);
                     return sendError('Not Found');
                 }
-                if($role?->name != config('constants.roles.ADMIN')){
-                      return sendError('Error', ['error' => 'Not Found ']);
+                if ($role?->name != config('constants.roles.ADMIN')) {
+                    return sendError('Error', ['error' => 'Not Found ']);
                 }
                 if ($user->status == config('constants.statuses.APPROVED')) {
 
@@ -157,14 +157,28 @@ class AuthController extends Controller
         $userId = auth()->id();
 
         $guestItems = Cart::where('session_id', $oldSessionId)->get();
-        if ($guestItems->IsNotEmpty()) {
+        
+        if ($guestItems->isNotEmpty()) {
             foreach ($guestItems as $item) {
-                Cart::updateOrCreate(
-                    ['user_id' => $userId, 'product_id' => $item->product_id],
-                    ['quantity' => \DB::raw("quantity + {$item->quantity}")]
+                $cartItem = Cart::firstOrCreate(
+                    [
+                        'user_id' => $userId,
+                        'product_id' => $item->product_id,
+                        'price_id' => $item->price_id,
+                    ],
+                    [
+                        'quantity' => 0, // default if new
+                        'product_type' => $item->product_type,
+                    ]
                 );
+
+                // Increment the quantity safely
+                $cartItem->increment('quantity', $item->quantity);
+
+                // Remove the guest cart item
                 $item->delete();
             }
         }
     }
+
 }

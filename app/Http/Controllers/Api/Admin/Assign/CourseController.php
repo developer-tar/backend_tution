@@ -16,8 +16,10 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
-class CourseController extends Controller {
-    public function index() {
+class CourseController extends Controller
+{
+    public function index()
+    {
         try {
             $courses = Course::with('subjects:id,name', 'modes:id,name', 'features:id,name,course_id', 'acdemicyears', 'prices:id,course_id,amount,billing_period_id,currency', 'prices.billingPeriod:id,name', 'slots:id,course_id,location_id,start_time,end_time,weekday_id,seats,class_name,remaining_seats', 'slots.locations:id,name', 'slots.weekDays:id,name')
                 ->where('created_id', Auth::id())
@@ -79,7 +81,8 @@ class CourseController extends Controller {
      * @param  StoreCourseRequest  $request
      * @return \Illuminate\Http\RedirectResponse
      */
-    public function store(StoreCourseRequest $request) {
+    public function store(StoreCourseRequest $request)
+    {
         try {
 
             DB::beginTransaction();
@@ -99,40 +102,56 @@ class CourseController extends Controller {
 
             BillingPeriod::all()->each(function ($billingPeriod) use ($courseObj, $data) {
                 $billingId = $billingPeriod->id;
-                if(isset($data["amount_for_online_{$billingId}"])) {
-                    $onlineRecord = Mode::where(['id' => $data['type_of_modes']])
-                        ->where('name', 'Online')
-                        ->value('id');
-                    $coursePriceData = [
-                        'course_id' => $courseObj->id,
-                        'billing_period_id' => $billingId,
-                        'amount' => $data["amount_for_online_{$billingId}"],
-                         'mode_id' => $onlineRecord,
-                    ];
-                    $courseObj->prices()->create($coursePriceData);
-                }
-                if(isset($data["amount_for_online_{$billingId}"])) {
-                    $inPersonRecord = Mode::where(['id' => $data['type_of_modes']])
-                        ->where('name', 'In person')
-                        ->value('id');
-                    $coursePriceData = [
-                        'course_id' => $courseObj->id,
-                        'billing_period_id' => $billingId,
-                        'amount' => $data["amount_for_online_{$billingId}"],
-                         'mode_id' => $inPersonRecord,
-                    ];
-                    $courseObj->prices()->create($coursePriceData);
-                }
-                // if (isset($data["amount_{$billingId}"])) {
-                //     $coursePriceData = [
-                //         'course_id' => $courseObj->id,
-                //         'billing_period_id' => $billingId,
-                //         'amount' => $data["amount_{$billingId}"],
-                //     ];
-                //     $courseObj->prices()->create($coursePriceData);
-                // }
-            }); //create course prices for each billing period
 
+                if (isset($data["amount_for_online_{$billingId}"])) {
+
+                    $onlineRecord = Mode::where('name', config('constants.modes.online'))
+                        ->value('id');//find out the id of online mode
+
+                    //create the course mode feature for online    
+                    $coursePriceData = [
+                        'course_id' => $courseObj->id,
+                        'billing_period_id' => $billingId,
+                        'amount' => $data["amount_for_online_{$billingId}"],
+                        'mode_id' => $onlineRecord,
+                    ];
+                    $courseObj->prices()->create($coursePriceData);
+                }
+
+                if (isset($data["amount_for_in_person_{$billingId}"])) {
+                    $inPersonRecord = Mode::where('name', config('constants.modes.in_person'))
+                        ->value('id');//find out the id of in person mode
+
+                    //create the course mode feature for in person
+                    $coursePriceData = [
+                        'course_id' => $courseObj->id,
+                        'billing_period_id' => $billingId,
+                        'amount' => $data["amount_for_in_person_{$billingId}"],
+                        'mode_id' => $inPersonRecord,
+                    ];
+                    $courseObj->prices()->create($coursePriceData);
+                }
+
+            }); //create course prices for each billing period
+            if ($data['online_features_names'] && is_array($data['online_features_names'])) {
+                //create the course mode feature for online
+                foreach ($data['online_features_names'] as $name) {
+                    $courseObj->modefeatures()->create([
+                        'course_id' => $courseObj->id,
+                        'online_features_names' => $name
+                    ]);
+
+                }//create the course mode feature for online
+            }
+
+            if ($data['in_person_features_names'] && is_array($data['in_person_features_names'])) {
+                foreach ($data['in_person_features_names'] as $name) {
+                    $courseObj->modefeatures()->create([
+                        'course_id' => $courseObj->id,
+                        'in_person_features_names' => $name
+                    ]);
+                }  //create the course mode feature for in person
+            }
             // if ($request->hasFile('course_image')) {
             //     UploadCourseImageJob::dispatch($courseObj, $request->file('course_image'));
             // }

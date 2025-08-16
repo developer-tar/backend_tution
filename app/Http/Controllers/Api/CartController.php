@@ -10,28 +10,39 @@ use Exception;
 
 use Illuminate\Support\Facades\{Log, Response};
 
-class CartController extends Controller {
-    
-    public function index(Request $request) {
+class CartController extends Controller
+{
+
+    public function index(Request $request)
+    {
         try {
             $userId = auth()->id();
             $sessionId = session()->getId();
 
-            $cartItems = Cart::with('course')
+            $cartItems = Cart::with('course', 'price')
                 ->where(function ($q) use ($userId, $sessionId) {
                     $userId ? $q->where('user_id', $userId) : $q->where('session_id', $sessionId);
                 })
                 ->get();
+
             if ($cartItems->isNotEmpty()) {
                 $cartItems = $cartItems->transform(function ($item) {
                     $course = $item->course;
+                    $amount = $item->price?->amount ?? 0;
+                    $quantity = $item->quantity ?? 1;
+                    if ($course->getFirstMediaUrl('course_image') == "") {
+                        $image = config('constants.dummy_image');
+                    } else {
+                        $image = $course->getFirstMediaUrl('course_image');
+                    }
                     return [
                         'cart_id' => $item->id,
                         'course_name' => $course->name ?? 'Unknown Product',
-                        'course_image' =>  $course->getFirstMediaUrl('course_image') ?? null,
-                        'quantity' => $item->quantity ?? 1,
-                        'course_price' => $course->amount ?? 0,
-                        'total_price' => ($item->quantity ?? 1) * ($course->amount ?? 0),
+                        'course_image' => $image,
+                        'quantity' => $quantity,
+                        'course_price' => $amount,
+                        'total_price' => $quantity * $amount,
+                        'price_id' => $item->price_id ?? null, // Include price_id if exists
                     ];
                 });
 
@@ -51,7 +62,8 @@ class CartController extends Controller {
     }
 
     // Add product to cart
-    public function add(AddToCartRequest $request) {
+    public function add(AddToCartRequest $request)
+    {
         try {
             $userId = auth()->id();
             $sessionId = session()->getId();
@@ -67,6 +79,7 @@ class CartController extends Controller {
                 })
                 ->where('product_id', $request->product_id)
                 ->where('product_type', $productType)
+                ->where('price_id', $request->price_id ?? null) // Check price_id if exists
                 ->first();
 
             if ($existingCartItem) {
@@ -74,9 +87,9 @@ class CartController extends Controller {
                     'success' => true,
                     'message' => 'Product is already added to your cart.'
                 ], 200);
-            }   
-            
-            
+            }
+
+
             // If not exists, add to cart
             $cartItem = Cart::create([
                 'user_id' => $userId,
@@ -84,8 +97,9 @@ class CartController extends Controller {
                 'product_id' => $request->product_id,
                 'product_type' => $productType,
                 'quantity' => $request->quantity,
+                'price_id' => $request->price_id ?? null, // Store price_id if exists
             ]);
-           
+
             return Response::json([
                 'success' => true,
                 'message' => 'Product added to cart!'
@@ -98,7 +112,8 @@ class CartController extends Controller {
 
 
     // Update cart item quantity
-    public function update(UpdateCartRequest $request, Cart $cart) {
+    public function update(UpdateCartRequest $request, Cart $cart)
+    {
         try {
             $userId = auth()->id();
             $sessionId = session()->getId();
@@ -132,7 +147,8 @@ class CartController extends Controller {
     }
 
     // Remove from cart
-    public function remove(RemoveFromCartRequest $request, Cart $cart) {
+    public function remove(RemoveFromCartRequest $request, Cart $cart)
+    {
         try {
             $userId = auth()->id();
             $sessionId = session()->getId();
