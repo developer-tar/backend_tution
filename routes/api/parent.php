@@ -22,4 +22,4 @@ Route::resource('add/student', StudentController::class);
 
 //merge add to cart and update cart
 
-Route::post('checkout', [PaymentController::class, 'checkout']);
+Route::post('/subscription-checkout', [PaymentController::class, 'subscriptionCheckout']);
