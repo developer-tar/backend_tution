@@ -142,6 +142,6 @@ return [
         '£' => 'gbp',
     ],
     'dummy_image' => 'https://images.pexels.com/photos/674010/pexels-photo-674010.jpeg',
-    'stripe_secret' => env('STRIPE_SECRET', 'sk_test_51RrEFZPBXobf6dxwdjRjXCHBGGcyMM5JvqdUH6l1MYZy5VUTRlpTlrRb0heiJI3PpTD5ImfAfa4u70sPb8bFnscO00LdIM35CN'),
-    'stripe_key' => env('STRIPE_KEY', 'pk_test_51RrEFZPBXobf6dxwTZVQSWHkX98T1NHdzInmjT7XX8txPyp2wMEwIBmBk8VNFr6m4bZd7nSMiH2mkKFdhjq3phKL00F1xm10lM'),
+    'stripe_secret' => env('STRIPE_SECRET'),
+    'stripe_key' => env('STRIPE_KEY'),
 ];
