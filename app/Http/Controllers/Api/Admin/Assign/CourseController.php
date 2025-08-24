@@ -133,7 +133,7 @@ class CourseController extends Controller
                 }
 
             }); //create course prices for each billing period
-            if ($data['online_features_names'] && is_array($data['online_features_names'])) {
+            if (isset($data['online_features_names']) && is_array($data['online_features_names'])) {
                 //create the course mode feature for online
                 foreach ($data['online_features_names'] as $name) {
                     $courseObj->modefeatures()->create([
@@ -144,7 +144,7 @@ class CourseController extends Controller
                 }//create the course mode feature for online
             }
 
-            if ($data['in_person_features_names'] && is_array($data['in_person_features_names'])) {
+            if (isset($data['in_person_features_names']) && is_array($data['in_person_features_names'])) {
                 foreach ($data['in_person_features_names'] as $name) {
                     $courseObj->modefeatures()->create([
                         'course_id' => $courseObj->id,

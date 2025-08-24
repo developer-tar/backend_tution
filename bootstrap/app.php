@@ -29,6 +29,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'SubstituteBindings' => SubstituteBindings::class
         ]);
+        $middleware->validateCsrfTokens(except: [
+            'stripe/*',
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         $exceptions->render(function (NotFoundHttpException $e) {
