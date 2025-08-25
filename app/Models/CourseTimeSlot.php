@@ -75,6 +75,7 @@ class CourseTimeSlot extends Model {
                 return [
                     "id"            => $item->id,
                     "course_name"   => optional($item->courses)->name,
+                    "class_name"    => $item->class_name,
                     "location_name" => optional($item->locations)->name,
                     "start_time"    => $item->start_time,
                     "end_time"      => $item->end_time,
