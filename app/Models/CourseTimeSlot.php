@@ -65,7 +65,7 @@ class CourseTimeSlot extends Model {
         $weekDayId = $request->input('weekday_id');
 
         return self::with(['locations:id,name', 'courses:id,name', 'weekDays:id,name'])
-            ->select('id', 'start_time', 'end_time', 'location_id', 'course_id', 'weekday_id', 'seats')
+            ->select('id', 'start_time', 'end_time', 'location_id', 'course_id', 'weekday_id', 'seats', 'class_name')
             ->when($acId, fn($q) => $q->orWhere('academic_course_id', $acId))
             ->when($locId, fn($q) => $q->orWhere('location_id', $locId))
             ->when($weekDayId, fn($q) => $q->orWhere('weekday_id', $weekDayId))

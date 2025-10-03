@@ -5,6 +5,7 @@ return [
         'STUDENT' => 'Student',
         'PARENT' => 'Parent',
         'TUTOR' => 'Tutor',
+        'SCHOOL' => 'School'
     ],
     'statuses' => [
         'PENDING' => 1,
@@ -144,4 +145,5 @@ return [
     'dummy_image' => 'https://images.pexels.com/photos/674010/pexels-photo-674010.jpeg',
     'stripe_secret' => env('STRIPE_SECRET', 'sk_test_51RrEFZPBXobf6dxwdjRjXCHBGGcyMM5JvqdUH6l1MYZy5VUTRlpTlrRb0heiJI3PpTD5ImfAfa4u70sPb8bFnscO00LdIM35CN'),
     'stripe_key' => env('STRIPE_KEY', 'pk_test_51RrEFZPBXobf6dxwTZVQSWHkX98T1NHdzInmjT7XX8txPyp2wMEwIBmBk8VNFr6m4bZd7nSMiH2mkKFdhjq3phKL00F1xm10lM'),
+    'default_password_for_school' => 12345678,
 ];
