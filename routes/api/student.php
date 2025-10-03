@@ -1,4 +1,5 @@
 <?php
+use App\Http\Controllers\Api\Admin\Assign\MockExamController;
 use App\Http\Controllers\Api\Parent\StudentController;
 use App\Http\Controllers\Api\Student\AssignmentController;
 use Illuminate\Support\Facades\Route;
@@ -30,3 +31,8 @@ Route::get('subtopic/content/view/{sub_topic_id}', [AssignmentController::class,
 
 //fetch  subjects
 Route::get('fetch/subjects', [AssignmentController::class, 'fetchSubjects']);
+
+//mock exam routes for students
+Route::get('my-mock-exams', [MockExamController::class, 'myMockExams']);
+Route::post('mock-exam/{mockExamId}/start', [MockExamController::class, 'startExam']);
+Route::post('mock-exam/{purchaseId}/submit', [MockExamController::class, 'submitExam']);

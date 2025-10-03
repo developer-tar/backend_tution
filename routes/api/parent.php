@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\MockExamPurchaseController;
 use App\Http\Controllers\Api\Parent\StudentController;
 use App\Http\Controllers\Api\PaymentController;
 use Illuminate\Support\Facades\Route;
@@ -23,3 +24,8 @@ Route::resource('add/student', StudentController::class);
 //merge add to cart and update cart
 
 Route::post('/checkout', [PaymentController::class, 'checkout']);
+
+// Mock exam purchase for parents
+Route::post('/mock-exam-checkout', [MockExamPurchaseController::class, 'parentCheckout']);
+Route::post('/mock-exam/verify-payment', [MockExamPurchaseController::class, 'verifyPayment']);
+Route::get('/my-mock-exam-purchases', [MockExamPurchaseController::class, 'myPurchases']);

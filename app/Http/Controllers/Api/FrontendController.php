@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\SlugValidateRequest;
 use App\Models\Course;
+use App\Models\MockExam;
+use App\Models\MockExamCategory;
 use App\Models\User;
 use Exception;
 use Illuminate\Http\Request;
@@ -171,5 +173,107 @@ class FrontendController extends Controller
         ];
 
         return array_merge($existingArray, $withoutPagination);
+    }
+
+    /**
+     * Get all mock exams for public view
+     */
+    public function mockExamView(Request $request)
+    {
+        try {
+            $categoryId = $request->input('category_id');
+            $formatId = $request->input('format_id');
+
+            $mockExams = MockExam::with([
+                'category:id,name',
+                'format:id,name',
+                'school:id,name',
+            ])
+                ->where('status', config('constants.statuses.APPROVED'))
+                ->when($categoryId, fn($q) => $q->where('category_id', $categoryId))
+                ->when($formatId, fn($q) => $q->where('format_id', $formatId))
+                ->latest()
+                ->paginate(12)
+                ->through(function ($exam) {
+                    return [
+                        'id' => $exam->id,
+                        'name' => $exam->name,
+                        'description' => Str::limit($exam->description, 100),
+                        'category' => $exam->category?->name,
+                        'format' => $exam->format?->name,
+                        'price' => $exam->currency . $exam->price,
+                        'duration_minutes' => $exam->duration_minutes,
+                        'total_marks' => $exam->total_marks,
+                        'school' => $exam->school?->name,
+                        'image' => $exam->getFirstMediaUrl('mock_exam_image') ?: config('constants.dummy_image'),
+                        'stripe_price_id' => $exam->stripe_price_id,
+                        'slug' => $exam->slug,
+                    ];
+                });
+            return sendResponse($mockExams, 'Mock exams fetched successfully.');    
+        
+        } catch (Exception $e) {
+            return errorLog("Failed to fetch mock exams: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+         
+        }
+    }
+
+    /**
+     * Get single mock exam details for public view
+     */
+    public function mockExamDetails($slug)
+    {
+        try {
+            $mockExam = MockExam::with([
+                'category:id,name',
+                'format:id,name',
+                'school:id,name',
+                'questions:id,mock_exam_id',
+            ])
+                ->where('status', config('constants.statuses.APPROVED'))
+                ->where('slug',$slug);
+
+            if (!$mockExam) {
+                return sendError('Mock exam not found', [], 404);
+            }
+
+            $data = [
+                'id' => $mockExam->id,
+                'name' => $mockExam->name,
+                'description' => $mockExam->description,
+                'category' => $mockExam->category?->name,
+                'format' => $mockExam->format?->name,
+                'price' => $mockExam->price,
+                'currency' => $mockExam->currency,
+                'formatted_price' => $mockExam->currency . $mockExam->price,
+                'duration_minutes' => $mockExam->duration_minutes,
+                'total_marks' => $mockExam->total_marks,
+                'questions_count' => $mockExam->questions->count(),
+                'school' => $mockExam->school?->name,
+                'image' => $mockExam->getFirstMediaUrl('mock_exam_image') ?: config('constants.dummy_image'),
+                'stripe_price_id' => $mockExam->stripe_price_id,
+            ];
+            return sendResponse($data, 'Mock exam details fetched successfully.');
+            
+        } catch (Exception $e) {
+            return errorLog("Failed to fetch mock exam details: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+        }
+    }
+
+    /**
+     * Get mock exam categories for filters
+     */
+    public function mockExamCategories()
+    {
+        try {
+            $categories = MockExamCategory::whereNull('parent_id')
+                ->with('allChildren')
+                ->orderBy('name')
+                ->get();
+            return sendResponse($categories, 'Categories fetched successfully.');
+            
+        } catch (Exception $e) {
+            return errorLog("Failed to fetch categories: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+        }
     }
 }

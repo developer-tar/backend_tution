@@ -4,6 +4,7 @@
 use App\Http\Controllers\Api\Admin\Assign\{AssignedStudentCourseController, AssignmentController, CourseContentTestController};
 
 use App\Http\Controllers\Api\Admin\Assign\{CourseController, TopicSubTopicController, TimeSlotController};
+use App\Http\Controllers\Api\Admin\Assign\MockExamController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -38,6 +39,13 @@ Route::resource('assign/test', CourseContentTestController::class);
 Route::get('fetch/course/topic/{subject_id}/{course_assignment_id}', [CourseContentTestController::class, 'fetchTopic']);
 Route::get('fetch/course/subtopic/{topic_id}', [CourseContentTestController::class, 'fetchSubTopic']);
 //end assigning the test for course content routing.
+
+//start mock exam routing
+Route::get('mock-exam/categories', [MockExamController::class, 'getCategories']);
+Route::get('mock-exam/category-tree', [MockExamController::class, 'getCategoryTree']);
+Route::post('mock-exam/category', [MockExamController::class, 'storeCategory']);
+Route::resource('mock-exam', MockExamController::class);
+//end mock exam routing
 
 Route::get('ca_records', [AssignmentController::class, 'courseAcdemicRecords']);
 
