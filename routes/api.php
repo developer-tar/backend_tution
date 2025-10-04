@@ -42,15 +42,12 @@ Route::middleware([
 });
 
 Route::get('course/view', [FrontendController::class, 'courseView']);
+//mock exam
 Route::get('mock-exam/view', [FrontendController::class, 'mockExamView']);
 Route::get('mock-exam/{slug}/details', [FrontendController::class, 'mockExamDetails']);
 Route::get('mock-exam/categories', [FrontendController::class, 'mockExamCategories']);
 
 // Common webhook for both subscriptions and mock exam purchases
-Route::post('webhook/stripe', [StripeController::class, 'handleWebhook']);
-
-// Test webhook endpoints (remove in production)
-Route::post('test/webhook/mock-exam', [TestWebhookController::class, 'testMockExamWebhook']);
-Route::post('test/webhook/subscription', [TestWebhookController::class, 'testSubscriptionWebhook']);
+Route::post('stripe/webhook', [StripeController::class, 'handleWebhook']);
 
 Route::get('{slug}', [FrontendController::class, 'courseViewBySlug']);

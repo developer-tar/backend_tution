@@ -166,4 +166,13 @@ return [
         'DOWNLOAD' => 'download',
         'PHYSICAL' => 'physical',
     ],
+    'stripe_payment_status' => [
+        'PENDING' => 'pending',
+        'PAID' => 'paid',
+        'FAILED' => 'failed',
+        'CANCELLED' => 'canceled',
+        'EXPIRED' => 'expired',
+        'REFUNDED' => 'refunded',
+        'PARTIALLY_REFUNDED' => 'partially_refunded',
+    ],
 ];

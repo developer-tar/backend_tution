@@ -27,9 +27,7 @@ class CommonWebhookController extends CashierWebhookController
             ]);
 
             // Handle based on session mode
-            if ($session['mode'] === 'subscription') {
-                return $this->handleSubscriptionCheckout($session);
-            } elseif ($session['mode'] === 'payment') {
+            if ($session['mode'] === 'payment') {
                 return $this->handleOneTimePayment($session);
             }
 
@@ -43,25 +41,6 @@ class CommonWebhookController extends CashierWebhookController
                 'payload' => $payload
             ]);
             
-            return $this->successMethod();
-        }
-    }
-
-    /**
-     * Handle subscription checkout (courses)
-     */
-    protected function handleSubscriptionCheckout(array $session)
-    {
-        try {
-            Log::info('Processing subscription checkout', ['session_id' => $session['id']]);
-            
-            // Let Cashier handle subscription creation automatically
-            // This will create subscription records in the database
-            
-            return $this->successMethod();
-
-        } catch (Exception $e) {
-            Log::error('Subscription checkout error: ' . $e->getMessage());
             return $this->successMethod();
         }
     }
@@ -143,108 +122,31 @@ class CommonWebhookController extends CashierWebhookController
             return $this->successMethod();
         }
     }
-
-    /**
-     * Handle payment failed
-     */
-    public function handlePaymentIntentPaymentFailed(array $payload)
+    protected function handleCheckoutSessionExpired(array $payload)
     {
         try {
-            $paymentIntent = $payload['data']['object'];
+            $session = $payload['data']['object'];
             
-            Log::warning('Payment failed', [
-                'payment_intent_id' => $paymentIntent['id'],
-                'metadata' => $paymentIntent['metadata'] ?? [],
-                'last_payment_error' => $paymentIntent['last_payment_error'] ?? null
+            Log::info('Webhook received: checkout.session.expired', [
+                'session_id' => $session['id'],
+                'payment_status' => $session['payment_status'],
+                'mode' => $session['mode'], // 'subscription' or 'payment'
+                'metadata' => $session['metadata'] ?? []
             ]);
 
+            // Currently, no specific action is needed on session expiration
             return $this->successMethod();
 
         } catch (Exception $e) {
-            Log::error('Payment failed webhook error: ' . $e->getMessage());
+            Log::error('Webhook error in handleCheckoutSessionExpired: ' . $e->getMessage(), [
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'payload' => $payload
+            ]);
+            
             return $this->successMethod();
         }
     }
 
-    /**
-     * Handle invoice payment succeeded (for subscriptions)
-     */
-    public function handleInvoicePaymentSucceeded(array $payload)
-    {
-        try {
-            $invoice = $payload['data']['object'];
-            
-            Log::info('Invoice payment succeeded', [
-                'invoice_id' => $invoice['id'],
-                'subscription_id' => $invoice['subscription'] ?? null,
-                'amount_paid' => $invoice['amount_paid'] ?? 0,
-                'customer' => $invoice['customer'] ?? null
-            ]);
-
-            // Let Cashier handle this automatically
-            return $this->successMethod();
-
-        } catch (Exception $e) {
-            Log::error('Invoice payment succeeded webhook error: ' . $e->getMessage());
-            return $this->successMethod();
-        }
-    }
-
-    /**
-     * Handle subscription deleted/cancelled
-     */
-    public function handleCustomerSubscriptionDeleted(array $payload)
-    {
-        try {
-            $subscription = $payload['data']['object'];
-            
-            Log::info('Subscription cancelled', [
-                'subscription_id' => $subscription['id'],
-                'customer' => $subscription['customer'] ?? null,
-                'status' => $subscription['status'] ?? null
-            ]);
-
-            // Let Cashier handle this automatically
-            return $this->successMethod();
-
-        } catch (Exception $e) {
-            Log::error('Subscription deleted webhook error: ' . $e->getMessage());
-            return $this->successMethod();
-        }
-    }
-
-    /**
-     * Handle dispute created
-     */
-    public function handleChargeDisputeCreated(array $payload)
-    {
-        try {
-            $dispute = $payload['data']['object'];
-            $chargeId = $dispute['charge'];
-
-            Log::warning('Dispute created', [
-                'dispute_id' => $dispute['id'],
-                'charge_id' => $chargeId,
-                'reason' => $dispute['reason'] ?? 'unknown',
-                'amount' => $dispute['amount'] ?? 0
-            ]);
-
-            // Find mock exam purchase by charge and log dispute
-            $purchase = MockExamPurchase::where('transaction_id', $chargeId)->first();
-            
-            if ($purchase) {
-                Log::warning('Mock exam purchase disputed', [
-                    'purchase_id' => $purchase->id,
-                    'charge_id' => $chargeId,
-                    'dispute_reason' => $dispute['reason'] ?? 'unknown'
-                ]);
-            }
-
-            return $this->successMethod();
-
-        } catch (Exception $e) {
-            Log::error('Dispute webhook error: ' . $e->getMessage());
-            return $this->successMethod();
-        }
-    }
+   
 }

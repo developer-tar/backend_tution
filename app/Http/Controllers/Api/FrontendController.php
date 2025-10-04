@@ -231,7 +231,8 @@ class FrontendController extends Controller
                 'questions:id,mock_exam_id',
             ])
                 ->where('status', config('constants.statuses.APPROVED'))
-                ->where('slug',$slug);
+                ->where('slug',$slug)
+                ->first();
 
             if (!$mockExam) {
                 return sendError('Mock exam not found', [], 404);

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\MockExam;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -91,15 +92,29 @@ class PaymentController extends Controller
                     ];
                 }
 
+                // Check if this is a mock exam purchase (single item)
+                $isMockExamPurchase = count($oneTimeItems) === 1;
+                $mockExamId = null;
+                
+                if ($isMockExamPurchase) {
+                    // Try to find mock exam by price_id
+                    $priceId = array_keys($oneTimeItems)[0];
+                    $mockExam = MockExam::where('stripe_price_id', $priceId)->first();
+                    if ($mockExam) {
+                        $mockExamId = $mockExam->id;
+                    }
+                }
+
+                $metadata = [
+                    'user_id' => $user->id,
+                    'purchased_by' => config('constants.roles.PARENT'),
+                    'mock_exam_id' => $mockExamId, // null if not a mock exam purchase
+                ];
+
                 $checkout = $user->checkout($lineItems, [
                     'success_url' => $frontendUrl . '/payment-success',
                     'cancel_url' => $frontendUrl . '/payment-cancel',
-                    'metadata' => [
-                        'type' => 'cart_checkout',
-                        'user_id' => $user->id,
-                        'purchased_by' => config('constants.roles.PARENT'), // Assuming parent role for cart
-                        'items_count' => count($oneTimeItems),
-                    ],
+                    'metadata' => $metadata,
                 ]);
                
             }

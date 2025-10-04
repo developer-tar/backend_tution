@@ -26,6 +26,6 @@ Route::resource('add/student', StudentController::class);
 Route::post('/checkout', [PaymentController::class, 'checkout']);
 
 // Mock exam purchase for parents
-Route::post('/mock-exam-checkout', [MockExamPurchaseController::class, 'parentCheckout']);
-Route::post('/mock-exam/verify-payment', [MockExamPurchaseController::class, 'verifyPayment']);
-Route::get('/my-mock-exam-purchases', [MockExamPurchaseController::class, 'myPurchases']);
+// Route::post('/mock-exam-checkout', [MockExamPurchaseController::class, 'parentCheckout']);
+// Route::post('/mock-exam/verify-payment', [MockExamPurchaseController::class, 'verifyPayment']);
+// Route::get('/my-mock-exam-purchases', [MockExamPurchaseController::class, 'myPurchases']);

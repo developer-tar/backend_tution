@@ -1,0 +1,3 @@
+GET /api/mock-exam/view - List all mock exams (with filters)
+GET /api/mock-exam/{id}/details - Single mock exam details
+GET /api/mock-exam/categories - Categories for filters
