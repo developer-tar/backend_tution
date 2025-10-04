@@ -125,7 +125,7 @@ class MockExamController extends Controller
                         'description' => $exam->description,
                         'category' => $exam->category?->name,
                         'format' => $exam->format->name,
-                        'price' => $exam->currency . $exam->price,
+                        'price' =>  $exam->price,
                         'duration_minutes' => $exam->duration_minutes,
                         'total_marks' => $exam->total_marks,
                         'school' => $exam->school?->name,
