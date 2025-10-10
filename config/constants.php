@@ -5,6 +5,7 @@ return [
         'STUDENT' => 'Student',
         'PARENT' => 'Parent',
         'TUTOR' => 'Tutor',
+        'SCHOOL' => 'School'
     ],
     'statuses' => [
         'PENDING' => 1,
@@ -144,4 +145,34 @@ return [
     'dummy_image' => 'https://images.pexels.com/photos/674010/pexels-photo-674010.jpeg',
     'stripe_secret' => env('STRIPE_SECRET', 'sk_test_51RrEFZPBXobf6dxwdjRjXCHBGGcyMM5JvqdUH6l1MYZy5VUTRlpTlrRb0heiJI3PpTD5ImfAfa4u70sPb8bFnscO00LdIM35CN'),
     'stripe_key' => env('STRIPE_KEY', 'pk_test_51RrEFZPBXobf6dxwTZVQSWHkX98T1NHdzInmjT7XX8txPyp2wMEwIBmBk8VNFr6m4bZd7nSMiH2mkKFdhjq3phKL00F1xm10lM'),
+    'default_password_for_school' => 12345678,
+    'schools' => [
+
+    ],
+    'mock_exam_formats' => [
+        'ANY' => 'any',
+        'ONLINE' => 'online',
+        'DOWNLOAD' => 'download',
+        'PHYSICAL' => 'physical',
+    ],
+    'mock_exam_purchase_status' => [
+        'NOT_STARTED' => 1,
+        'IN_PROGRESS' => 2,
+        'COMPLETED' => 3,
+    ],
+    'formats' => [
+        'ANY' => 'any',
+        'ONLINE' => 'online',
+        'DOWNLOAD' => 'download',
+        'PHYSICAL' => 'physical',
+    ],
+    'stripe_payment_status' => [
+        'PENDING' => 'pending',
+        'PAID' => 'paid',
+        'FAILED' => 'failed',
+        'CANCELLED' => 'canceled',
+        'EXPIRED' => 'expired',
+        'REFUNDED' => 'refunded',
+        'PARTIALLY_REFUNDED' => 'partially_refunded',
+    ],
 ];

@@ -1,5 +1,10 @@
 <?php
 
+use App\Http\Controllers\Api\CommonWebhookController;
+use App\Http\Controllers\Api\MockExamPurchaseController;
+use App\Http\Controllers\Api\MockExamWebhookController;
+use App\Http\Controllers\Api\StripeController;
+use App\Http\Controllers\Api\TestWebhookController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\{CartController, AuthController, CommonDataController};
 use App\Http\Controllers\Api\FrontendController;
@@ -36,6 +41,13 @@ Route::middleware([
     Route::post('login', [AuthController::class, 'login']);
 });
 
-//frontend api
 Route::get('course/view', [FrontendController::class, 'courseView']);
+//mock exam
+Route::get('mock-exam/view', [FrontendController::class, 'mockExamView']);
+Route::get('mock-exam/{slug}/details', [FrontendController::class, 'mockExamDetails']);
+Route::get('mock-exam/categories', [FrontendController::class, 'mockExamCategories']);
+
+// Common webhook for both subscriptions and mock exam purchases
+Route::post('stripe/webhook', [StripeController::class, 'handleWebhook']);
+
 Route::get('{slug}', [FrontendController::class, 'courseViewBySlug']);

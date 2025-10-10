@@ -1,0 +1,9 @@
+STEP 7: Student APIs
+7.1 Get My Purchased Exams
+GET {{base_url}}/api/student/my-mock-exams
+
+7.2 Start Exam
+POST {{base_url}}/api/student/mock-exam/1/start
+
+7.3 Submit Answers
+POST {{base_url}}/api/student/mock-exam/1/submit
