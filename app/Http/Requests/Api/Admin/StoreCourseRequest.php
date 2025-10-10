@@ -63,7 +63,7 @@ class StoreCourseRequest extends FormRequest
 
             'acdemic_year_id' => ['required', 'integer', 'exists:acdemic_years,id'],
 
-            'course_image' => ['required', 'image', 'max:10240'],
+            'course_image' => ['nullable', 'image', 'max:10240'],
             'description' => ['required', 'string', 'min:500', 'max:10000'],
         ], $billingRules);
     }
