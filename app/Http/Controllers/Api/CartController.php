@@ -19,31 +19,79 @@ class CartController extends Controller
             $userId = auth()->id();
             $sessionId = session()->getId();
 
-            $cartItems = Cart::with('course', 'price')
+            $cartItems = Cart::with(['price'])
                 ->where(function ($q) use ($userId, $sessionId) {
                     $userId ? $q->where('user_id', $userId) : $q->where('session_id', $sessionId);
                 })
                 ->get();
+            
+            // Load relationships conditionally based on product_type
+            $cartItems->load([
+                'course' => function ($query) {
+                    // Only load if product_type is course
+                },
+                'mockExam' => function ($query) {
+                    // Only load if product_type is mock
+                }
+            ]);
 
             if ($cartItems->isNotEmpty()) {
                 $cartItems = $cartItems->transform(function ($item) {
-                    $course = $item->course;
-                    $amount = $item->price?->amount ?? 0;
+                    $productType = $item->product_type;
                     $quantity = $item->quantity ?? 1;
-                    if ($course->getFirstMediaUrl('course_image') == "") {
-                        $image = config('constants.dummy_image');
-                    } else {
-                        $image = $course->getFirstMediaUrl('course_image');
-                    }
-                    return [
+                    
+                    // Initialize response array with common structure
+                    $response = [
                         'cart_id' => $item->id,
-                        'course_name' => $course->name ?? 'Unknown Product',
-                        'course_image' => $image,
+                        'product_type' => $productType,
                         'quantity' => $quantity,
-                        'course_price' => $amount,
-                        'total_price' => $quantity * $amount,
-                        'price_id' => $item->price_id ?? null, // Include price_id if exists
+                        'price_id' => $item->price_id ?? null,
                     ];
+                    
+                    // Check if it's a course
+                    if ($productType == config('constants.product_types.course') && $item->course) {
+                        $course = $item->course;
+                        $amount = $item->price?->amount ?? 0;
+                        
+                        if ($course->getFirstMediaUrl('course_image') == "") {
+                            $image = config('constants.dummy_image');
+                        } else {
+                            $image = $course->getFirstMediaUrl('course_image');
+                        }
+                        
+                        $response['course_name'] = $course->name ?? 'Unknown Product';
+                        $response['course_image'] = $image;
+                        $response['course_price'] = $amount;
+                        $response['total_price'] = $quantity * $amount;
+                    } 
+                    // Check if it's a mock exam
+                    elseif ($productType == config('constants.product_types.mock') && $item->mockExam) {
+                        $mockExam = $item->mockExam;
+                        $amount = $mockExam->price ?? 0;
+                        
+                        if ($mockExam->getFirstMediaUrl('mock_exam_image') == "") {
+                            $image = config('constants.dummy_image');
+                        } else {
+                            $image = $mockExam->getFirstMediaUrl('mock_exam_image');
+                        }
+                        
+                        // Course keys maintained for consistency
+                        $response['course_name'] = $mockExam->name ?? 'Unknown Product';
+                        $response['course_image'] = $image;
+                        $response['course_price'] = $amount;
+                        $response['total_price'] = $quantity * $amount;
+                        
+                        // Additional mock exam specific keys
+                        $response['mock_exam_name'] = $mockExam->name ?? null;
+                        $response['mock_exam_description'] = $mockExam->description ?? null;
+                        $response['mock_exam_format'] = $mockExam->format ?? null;
+                        $response['mock_exam_duration_minutes'] = $mockExam->duration_minutes ?? null;
+                        $response['mock_exam_total_marks'] = $mockExam->total_marks ?? null;
+                        $response['mock_exam_currency'] = $mockExam->currency ?? null;
+                        $response['mock_exam_slug'] = $mockExam->slug ?? null;
+                    }
+                    
+                    return $response;
                 });
 
                 $response = [

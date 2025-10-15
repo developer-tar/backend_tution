@@ -20,4 +20,7 @@ class Cart extends Model
     public function price() {
         return $this->belongsTo(CoursePrice::class, 'price_id', 'stripe_price_id');
     }
+    public function mockExam() {
+        return $this->belongsTo(MockExam::class, 'product_id', 'id');
+    }
 }
