@@ -5,7 +5,9 @@ use App\Http\Controllers\Api\Parent\StudentController;
 use App\Http\Controllers\Api\PaymentController;
 use Illuminate\Support\Facades\Route;
 
-
+Route::get('testing', function () {
+    return 'Hello, welcome to parent api world';
+});
 /*
 |--------------------------------------------------------------------------
 | API Routes

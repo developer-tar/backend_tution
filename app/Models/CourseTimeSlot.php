@@ -29,6 +29,7 @@ class CourseTimeSlot extends Model {
             'end_time'            => $data['end_time'],
         ], [
             'seats'               => $data['seats'],
+            'remaining_seats'     => $data['seats'],
             'class_name'          => $data['class_name'],
         ]);
 
@@ -97,6 +98,7 @@ class CourseTimeSlot extends Model {
             'end_time'            => $data['end_time'],
             'seats'               => $data['seats'],
             'class_name'          => $data['class_name'],
+            'remaining_seats'     => $data['seats'],
         ]);
 
         return [
