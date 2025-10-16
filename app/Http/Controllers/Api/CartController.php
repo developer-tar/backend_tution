@@ -16,7 +16,40 @@ class CartController extends Controller
     public function index(Request $request)
     {
         try {
-            $userId = auth()->id();
+            // Check if Bearer token is provided
+            if ($request->bearerToken()) {
+                Log::info('Bearer token detected in cart request', [
+                    'token_length' => strlen($request->bearerToken()),
+                    'token_start' => substr($request->bearerToken(), 0, 20) . '...'
+                ]);
+                
+                // Try to authenticate with Bearer token
+                try {
+                    $user = auth('api')->user();
+                    if (!$user) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Invalid or expired Bearer token',
+                            'error' => 'Token authentication failed - please login again to get a fresh token'
+                        ], 401);
+                    }
+                    $userId = $user->id;
+                    Log::info('Bearer token authentication successful', ['user_id' => $userId]);
+                } catch (Exception $e) {
+                    Log::error('Bearer token validation error', ['error' => $e->getMessage()]);
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Bearer token validation failed',
+                        'error' => 'Token signature verification failed - please login again',
+                        'debug' => $e->getMessage()
+                    ], 401);
+                }
+            } else {
+                // No Bearer token, use session authentication
+                $userId = auth()->id();
+                Log::info('No Bearer token, using session auth', ['user_id' => $userId]);
+            }
+            
             $sessionId = session()->getId();
 
             $cartItems = Cart::with(['price'])
