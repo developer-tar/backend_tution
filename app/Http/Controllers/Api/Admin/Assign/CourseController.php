@@ -152,9 +152,22 @@ class CourseController extends Controller
                     ]);
                 }  //create the course mode feature for in person
             }
-            // if ($request->hasFile('course_image')) {
-            //     UploadCourseImageJob::dispatch($courseObj, $request->file('course_image'));
-            // }
+          
+            if ($request->hasFile('course_image')) {
+                // Use queue job for fast response and background R2 upload
+                $file = $request->file('course_image');
+                
+                // Store file temporarily in local storage for queue processing
+                $tempPath = $file->store('temp/course_images', 'local');
+                
+                // Dispatch job for background processing
+                UploadCourseImageJob::dispatch(
+                    $courseObj->id,
+                    $tempPath,
+                    $file->getClientOriginalName(),
+                    $file->getMimeType()
+                );
+            }
 
             $subjectData = collect($request->subject_ids)->mapWithKeys(fn($id) => [
                 $id => ['created_at' => now(), 'updated_at' => now()]
