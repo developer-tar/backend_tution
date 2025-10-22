@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\Parent\AddStudentRequest;
 use App\Http\Requests\Api\Parent\StudentListRequest;
 use App\Http\Requests\Api\Parent\UpdateStudentRequest;
+use App\Http\Requests\Api\Parent\DeleteStudentRequest;
+use App\Http\Requests\Api\Parent\ResetStudentPasswordRequest;
 use App\Models\Role;
 use App\Models\StudentDetail;
 use App\Models\User;
@@ -207,6 +209,89 @@ class StudentController extends Controller
             DB::rollBack();
             Log::error("Failed to update student. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
             return sendError('error', ['error' => 'An error occurred during update.'], 500);
+        }
+    }
+
+    /**
+     * Remove the specified student from storage.
+     */
+    public function destroy(DeleteStudentRequest $request, $studentId)
+    {
+        try {
+            // Get validated student from request
+            $student = $request->input('validated_student');
+            
+            if (!$student) {
+                return sendError('Student not found', ['error' => 'Student not found or you do not have permission to delete this student.'], 404);
+            }
+
+            // Delete student using service
+            $this->studentService->deleteStudent($student);
+
+            $response = [
+                'success' => true,
+                'message' => 'Student deleted successfully.',
+            ];
+
+            return response()->json($response, 200);
+
+        } catch (\Exception $e) {
+            Log::error("Failed to delete student. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
+            return sendError('error', ['error' => 'An error occurred during deletion.'], 500);
+        }
+    }
+
+    /**
+     * Get student emails for authenticated parent.
+     */
+    public function getStudentEmails()
+    {
+        try {
+            $parentId = auth()->user()->id;
+            
+            $studentEmails = $this->studentService->getStudentEmails($parentId);
+
+            $response = [
+                'success' => true,
+                'message' => 'Student emails retrieved successfully.',
+                'data' => $studentEmails
+            ];
+
+            return response()->json($response, 200);
+
+        } catch (\Exception $e) {
+            Log::error("Failed to retrieve student emails. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
+            return sendError('error', ['error' => 'An error occurred while retrieving student emails.'], 500);
+        }
+    }
+
+    /**
+     * Reset student password.
+     */
+    public function resetPassword(ResetStudentPasswordRequest $request)
+    {
+        try {
+            // Get validated user from request
+            $user = $request->input('validated_user');
+            $newPassword = $request->input('new_password');
+            
+            if (!$user) {
+                return sendError('User not found', ['error' => 'Student not found or validation failed.'], 404);
+            }
+
+            // Reset password using service
+            $this->studentService->resetStudentPassword($user, $newPassword);
+
+            $response = [
+                'success' => true,
+                'message' => 'Student password reset successfully.',
+            ];
+
+            return response()->json($response, 200);
+
+        } catch (\Exception $e) {
+            Log::error("Failed to reset student password. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
+            return sendError('error', ['error' => 'An error occurred during password reset.'], 500);
         }
     }
 }

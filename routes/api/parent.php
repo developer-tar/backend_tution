@@ -20,7 +20,9 @@ Route::get('testing', function () {
 */
 // start student routing 
 Route::get('students', [StudentController::class, 'index']);
-Route::resource('student', StudentController::class)->only(['edit', 'update']);
+Route::get('student-emails', [StudentController::class, 'getStudentEmails']);
+Route::post('student/reset-password', [StudentController::class, 'resetPassword']);
+Route::resource('student', StudentController::class)->only(['edit', 'update', 'destroy']);
 Route::resource('add/student', StudentController::class);
 
 //end student routing
