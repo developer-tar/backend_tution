@@ -40,6 +40,9 @@ class CommonDataController extends Controller
                 if ($param === 'Roles') {
                     $data = Role::select('id', 'name')
                         ->whereNot('name', config('constants.roles.ADMIN'))
+                        ->whereNot('name', config('constants.roles.ADMIN'))
+                        ->whereNot('name', config('constants.roles.TUTOR'))
+                        ->whereNot('name', config('constants.roles.SCHOOL'))
                         ->get();
                 }
                  if ($param === 'AcdemicYears') {

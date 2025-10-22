@@ -18,10 +18,12 @@ Route::get('testing', function () {
 | be assigned to the "api" middleware group. Make something great!
 |
 */
-// start course routing 
+// start student routing 
+Route::get('students', [StudentController::class, 'index']);
+Route::resource('student', StudentController::class)->only(['edit', 'update']);
 Route::resource('add/student', StudentController::class);
 
-//end course routing
+//end student routing
 
 //merge add to cart and update cart
 
