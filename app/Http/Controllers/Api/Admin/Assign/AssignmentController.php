@@ -168,9 +168,9 @@ class AssignmentController extends Controller
                 return [
                     'id' => $week->id,
                     'name' => "{$week->week_number} - " .
-                        \Carbon\Carbon::parse($week->start_date)->format('d M') .
+                        \Carbon\Carbon::parse($week->start_date)->format('d M Y') .
                         " to " .
-                        \Carbon\Carbon::parse($week->end_date)->format('d M'),
+                        \Carbon\Carbon::parse($week->end_date)->format('d M Y'),
                 ];
             });
 

@@ -92,4 +92,14 @@ class StudentDetail extends Model
     {
         return $this->belongsTo(TargetSchool::class, 'target_school_id');
     }
+
+    /**
+     * Get assigned courses for this student
+     */
+    public function assignedCourses()
+    {
+        return $this->hasMany(ManageStudentRecord::class, 'buyer_id', 'child_id')
+                    ->with('course:id,name')
+                    ->whereNull('parent_id'); // Admin assignments
+    }
 }

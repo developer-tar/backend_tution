@@ -43,8 +43,14 @@ class StudentController extends Controller
                 'day:id,name',
                 'region:id,name',
                 'gender:id,name',
-                'targetSchool:id,name'
-            ])->where('parent_id', $parentId);
+                'targetSchool:id,name',
+                'assignedCourses' => function($query) {
+                    $query->select('id', 'buyer_id', 'course_id', 'status', 'is_completed', 'created_at')
+                          ->with('course:id,name');
+                }
+            ])
+            ->withCount('assignedCourses as assigned_courses_count')
+            ->where('parent_id', $parentId);
 
             // Apply search filter if provided
             if (!empty($search)) {
@@ -67,7 +73,7 @@ class StudentController extends Controller
 
             $response = [
                 'success' => true,
-                'message' => 'Students retrieved successfully.',
+                'message' => 'Students retrieved successfully with assigned courses.',
                 'data' => $students
             ];
 

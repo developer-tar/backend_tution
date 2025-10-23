@@ -16,9 +16,9 @@ class Week extends Model
     public function getStartEndDateAttribute()
     {
         if ($this->start_date && $this->end_date) {
-            return \Carbon\Carbon::parse($this->start_date)->format('d M') .
+            return \Carbon\Carbon::parse($this->start_date)->format('d M Y') .
                 ' to ' .
-                \Carbon\Carbon::parse($this->end_date)->format('d M');
+                \Carbon\Carbon::parse($this->end_date)->format('d M Y');
         }
 
         return null;

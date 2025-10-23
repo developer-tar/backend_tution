@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api\Admin\Assign;
 
 use App\Http\Controllers\Controller;
-
+use Illuminate\Http\Request;
 use App\Http\Requests\Api\Admin\StoreCourseRequest;
 use App\Jobs\CreateStripePrice;
 use App\Jobs\UploadCourseImageJob;
@@ -18,16 +18,72 @@ use Illuminate\Support\Str;
 
 class CourseController extends Controller
 {
-    public function index()
+   
+    public function index(Request $request)
     {
         try {
+            $search = $request->input('search');
+            
             $courses = Course::with('subjects:id,name', 'modes:id,name', 'features:id,name,course_id', 'acdemicyears', 'prices:id,course_id,amount,billing_period_id,currency', 'prices.billingPeriod:id,name', 'slots:id,course_id,location_id,start_time,end_time,weekday_id,seats,class_name,remaining_seats', 'slots.locations:id,name', 'slots.weekDays:id,name')
                 ->where('created_id', Auth::id())
+                ->when($search, function ($query) use ($search) {
+                    $query->where(function ($q) use ($search) {
+                        // Search in Course fields
+                        $q->where('name', 'LIKE', "%{$search}%")
+                          ->orWhere('description', 'LIKE', "%{$search}%")
+                          ->orWhere('slug', 'LIKE', "%{$search}%")
+                          
+                          // Search in Subjects
+                          ->orWhereHas('subjects', function ($subjectQuery) use ($search) {
+                              $subjectQuery->where('name', 'LIKE', "%{$search}%");
+                          })
+                          
+                          // Search in Modes
+                          ->orWhereHas('modes', function ($modeQuery) use ($search) {
+                              $modeQuery->where('name', 'LIKE', "%{$search}%");
+                          })
+                          
+                          // Search in Features
+                          ->orWhereHas('features', function ($featureQuery) use ($search) {
+                              $featureQuery->where('name', 'LIKE', "%{$search}%");
+                          })
+                          
+                          // Search in Academic Years
+                          ->orWhereHas('acdemicyears', function ($yearQuery) use ($search) {
+                              $yearQuery->where('start_year', 'LIKE', "%{$search}%")
+                                       ->orWhere('end_year', 'LIKE', "%{$search}%");
+                          })
+                          
+                          // Search in Billing Periods through Prices
+                          ->orWhereHas('prices.billingPeriod', function ($billingQuery) use ($search) {
+                              $billingQuery->where('name', 'LIKE', "%{$search}%");
+                          })
+                          
+                          // Search in Locations through Slots
+                          ->orWhereHas('slots.locations', function ($locationQuery) use ($search) {
+                              $locationQuery->where('name', 'LIKE', "%{$search}%");
+                          })
+                          
+                          // Search in WeekDays through Slots
+                          ->orWhereHas('slots.weekDays', function ($weekDayQuery) use ($search) {
+                              $weekDayQuery->where('name', 'LIKE', "%{$search}%");
+                          })
+                          
+                          // Search in Slots fields
+                          ->orWhereHas('slots', function ($slotQuery) use ($search) {
+                              $slotQuery->where('class_name', 'LIKE', "%{$search}%")
+                                       ->orWhere('start_time', 'LIKE', "%{$search}%")
+                                       ->orWhere('end_time', 'LIKE', "%{$search}%");
+                          });
+                    });
+                })
                 ->orderBy('created_at', 'desc')
                 ->paginate(10)
                 ->through(function ($course) {
                     return [
-                        'acdemicyear' => $course?->acdemicyears->first()?->start_end_year ?? null,
+                        'acdemicyear' => $course?->acdemicyears->first() 
+                            ? ($course->acdemicyears->first()->start_year . '-' . $course->acdemicyears->first()->end_year)
+                            : null,
                         'name' => $course->name,
                         'slug' => $course->slug,
                         'subjects' => $course->subjects->pluck('name'),
@@ -56,7 +112,7 @@ class CourseController extends Controller
                             : null,
                         'image' => $course->getFirstMediaUrl('course_image') ?? null,
                         'description' => $course->description ? Str::limit($course->description, 50) : null,
-                        'price_id' => $course->price_id ?? null,
+                        
                         'amounts' => collect($course->prices)->mapWithKeys(function ($price) {
                             $key = $price->billingPeriod->name;
                             return [$key => $price->currency . (float) $price->amount];
@@ -65,9 +121,13 @@ class CourseController extends Controller
                 });
             $response = [
                 'success' => true,
-                'message' => 'Courses fetched successfully.',
+                'message' => $search 
+                    ? ($courses->total() > 0 
+                        ? "Courses found for search term '{$search}'." 
+                        : "No courses found for search term '{$search}'.")
+                    : 'Courses fetched successfully.',
                 'data' => $courses,
-
+                'search_term' => $search,
             ];
             return response()->json($response, 200);
         } catch (Exception $e) {
