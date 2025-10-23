@@ -175,4 +175,5 @@ return [
         'REFUNDED' => 'refunded',
         'PARTIALLY_REFUNDED' => 'partially_refunded',
     ],
+    'active_status' => 'active',
 ];
