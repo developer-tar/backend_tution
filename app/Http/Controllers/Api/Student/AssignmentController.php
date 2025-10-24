@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\Student\CAssignmentRequest;
 
 use App\Http\Requests\Api\Student\SubTopicIdRequest;
+use App\Http\Requests\Api\Student\SubTopicTestIdRequest;
 use App\Http\Requests\Api\Student\TestIdRequest;
 use App\Http\Requests\Api\Student\TopicIdRequest;
 use App\Models\Course;
@@ -688,5 +689,74 @@ class AssignmentController extends Controller {
             'message' => $tests->total() ? 'Topic test fetched successfully.' : 'No topic test record found.',
             'data' => $tests,
         ], $tests->total() ? 200 : 404);
+    }
+
+    public function subTopicTest(SubTopicTestIdRequest $request) {
+        try {
+            $subTopicTest = CourseTest::with('courseSubTopic.courseTopic.courseAssignment.weeks', 'question.options')
+                ->whereNotNull('course_sub_topic_id')
+                ->find($request->input('sub_topic_test_id'));
+
+            if (!$subTopicTest) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid sub topic test.',
+                    'data' => [],
+                ], 400);
+            }
+
+            $week = optional($subTopicTest->courseSubTopic->courseTopic->courseAssignment)->weeks;
+            $now = Carbon::now();
+
+            // if (!$now->between(Carbon::parse($week->start_date), Carbon::parse($week->end_date))) {
+            //     return response()->json([
+            //         'success' => false,
+            //         'message' => 'Right now, you have no access to this give the test.',
+            //         'data' => [],
+            //     ], 400);
+            // }
+
+            if (!$week) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Something went wrong: week is invalid or missing.',
+                    'data' => [],
+                ], 400);
+            }
+
+            $questions = $subTopicTest->question->map(function ($question) {
+                return [
+                    'id' => $question->id,
+                    'name' => $question->name,
+                    'duration_in_sec' => $question->duration_in_sec,
+                    'options' => $question->options->map(function ($option) {
+                        return [
+                            'id' => $option->id,
+                            'name' => $option->name,
+                        ];
+                    }),
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Sub topic test data fetched successfully.',
+                'data' => [
+                    'test' => [
+                        'id' => $subTopicTest->id,
+                        'name' => $subTopicTest->name,
+                        'questions' => $questions,
+                    ],
+                ],
+            ]);
+        } catch (\Exception $e) {
+            \Log::error("Failed to fetch the sub topic test. Message => {$e->getMessage()}, File => {$e->getFile()}, Line No => {$e->getLine()}, Error Code => {$e->getCode()}.");
+
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred while fetching the sub topic test.',
+                'data' => [],
+            ], 500);
+        }
     }
 }

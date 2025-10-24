@@ -29,6 +29,9 @@ Route::get('topic/test/{test_id}', [AssignmentController::class, 'topicTest']);
 //subtopic content api with specfic id
 Route::get('subtopic/content/view/{sub_topic_id}', [AssignmentController::class, 'subTopicContentView']);
 
+//subtopic test api with specfic id
+Route::get('subtopic/test/{sub_topic_test_id}', [AssignmentController::class, 'subTopicTest']);
+
 //fetch  subjects
 Route::get('fetch/subjects', [AssignmentController::class, 'fetchSubjects']);
 
