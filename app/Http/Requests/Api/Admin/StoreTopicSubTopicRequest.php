@@ -18,8 +18,8 @@ class StoreTopicSubTopicRequest extends FormRequest
             'subject_id' => ['required', 'integer', 'exists:subjects,id'],
             'topic_name' => ['required', 'string'],
             'subtopic_name' => ['nullable', 'string'],
-            'content_upload' => ['required', 'array'], // Make sure it's an array of files
-            'content_upload.*' => ['file', 'mimes:mp4,mov,avi,wmv,pdf,jpg,jpeg,png', 'max:512000'], // Allow multiple types(50Mb)
+            'content_upload' => ['required', 'array', "max:10"], // Make sure it's an array of files
+            'content_upload.*' => ['file', 'mimes:mp4,mov,avi,wmv,pdf,jpg,jpeg,png,mpeg', 'max:512000'], // Allow multiple types(50Mb)
         ];
 
     }

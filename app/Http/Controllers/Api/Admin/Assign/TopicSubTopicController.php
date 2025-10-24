@@ -30,6 +30,9 @@ class TopicSubTopicController extends Controller
             $courseTopicId = $request->input('course_topic_id');
             $courseSubtopicId = $request->input('course_subtopic_id');
 
+            // Check if any filters are provided
+            $hasFilters = $academicCourseId || $subjectId || $assignmentId || $courseTopicId || $courseSubtopicId;
+
             $topics = CourseTopic::with([
                 'subtopic:id,course_topic_id,name',
                 'courseAssignment:id,week_id,acdemic_course_id',
@@ -60,7 +63,7 @@ class TopicSubTopicController extends Controller
                     );
                 })
                 ->orderBy('created_at', 'desc')
-                ->paginate(10)
+                ->paginate($hasFilters ? 10 : 50)
                 ->through(function ($item) {
                     return [
                         'acdemicyears' => optional($item->courseAssignment?->acdemicCourses?->acdemicyears)->start_end_year,
@@ -107,6 +110,35 @@ class TopicSubTopicController extends Controller
     public function store(StoreTopicSubTopicRequest $request)
     {
         try {
+            // First, store files outside transaction to ensure they persist
+            $filePaths = [];
+            if ($request->hasFile('content_upload')) {
+                // Create temp directory if not exists
+                $tempDir = storage_path('app/temp');
+                if (!is_dir($tempDir)) {
+                    mkdir($tempDir, 0755, true);
+                }
+
+                foreach ($request->file('content_upload') as $file) {
+                    // Manual file copy to ensure it works
+                    $tempFileName = 'temp_' . uniqid() . '.' . $file->getClientOriginalExtension();
+                    $tempPath = $tempDir . '/' . $tempFileName;
+                    
+                    // Copy file manually
+                    if (copy($file->getRealPath(), $tempPath)) {
+                        $filePaths[] = [
+                            'temp_path' => $tempPath,
+                            'original_name' => $file->getClientOriginalName(),
+                            'extension' => $file->getClientOriginalExtension(),
+                            'mime_type' => $file->getMimeType()
+                        ];
+                        \Log::info("File stored successfully: " . $tempPath);
+                    } else {
+                        \Log::error("Failed to store file: " . $file->getClientOriginalName());
+                    }
+                }
+            }
+
             DB::beginTransaction();
 
             $courseTopic = CourseTopic::firstOrCreate(
@@ -130,20 +162,28 @@ class TopicSubTopicController extends Controller
                 $isSubtopic = 'subtopic';
             }
 
-            if ($request->hasFile('content_upload')) {
+            DB::commit();
+
+            // After successful DB operations, dispatch job with files
+            if (!empty($filePaths)) {
                 // Check if any media exists already for this model in the 'content_upload' collection
                 if ($targetModel->media()->where('collection_name', 'content_upload')->exists()) {
+                    // Clean up temp files if content already exists
+                    foreach ($filePaths as $fileData) {
+                        if (file_exists($fileData['temp_path'])) {
+                            unlink($fileData['temp_path']);
+                        }
+                    }
                     return response()->json(['message' => 'Content already uploaded for this topic/subtopic.'], 200);
                 }
 
-                foreach ($request->file('content_upload') as $file) {
-                    $targetModel->addMedia($file)
-                        ->toMediaCollection('content_upload');
-                }
+                // Dispatch job with stored file paths
+                UploadSingleContentFileJob::dispatch(
+                    get_class($targetModel),
+                    $targetModel->id,
+                    $filePaths
+                );
             }
-
-
-            DB::commit();
 
             $response = [
                 'success' => true,
@@ -151,9 +191,18 @@ class TopicSubTopicController extends Controller
             ];
             return response()->json($response, 200);
 
-
         } catch (\Exception $e) {
             DB::rollBack();
+            
+            // Clean up temp files on error
+            if (!empty($filePaths)) {
+                foreach ($filePaths as $fileData) {
+                    if (file_exists($fileData['temp_path'])) {
+                        unlink($fileData['temp_path']);
+                    }
+                }
+            }
+            
             Log::error("Failed to create topic and subtopic for course. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
             $response = [
                 'success' => false,

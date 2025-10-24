@@ -27,14 +27,22 @@ class CourseContentTestController extends Controller
      */
     public function index(FetchTestList $request)
     {
-        try {  // Pull filter vars once for clarity
-            $academicCourseId = $request->input('acdemic_course_id');   // keep typo if DB says so
+        try { 
+            // Pull filter vars once for clarity
+            $academicCourseId = $request->input('academic_course_id') ?: $request->input('acdemic_course_id');   // handle both spellings
             $subjectId = $request->input('subject_id');
             $assignmentId = $request->input('assignment_id');
             $courseTopicId = $request->input('course_topic_id');
             $courseSubtopicId = $request->input('course_subtopic_id');
             $testId = $request->input('test_id');
             $questionId = $request->input('question_id');
+            
+            // Debug logging
+            Log::info("Test API Filters: academic_course_id={$academicCourseId}, subject_id={$subjectId}, assignment_id={$assignmentId}");
+            
+            // Check if any filters are provided (only check main filter keys)
+            $hasFilters = !empty($academicCourseId) || !empty($subjectId) || !empty($assignmentId) || !empty($courseTopicId) || !empty($courseSubtopicId);
+
             $tests = CourseTest::with([
                 'courseTopic:id,name,subject_id,course_assignment_id',
                 'courseTopic.subject:id,name',
@@ -49,12 +57,16 @@ class CourseContentTestController extends Controller
                 'question.options.answer:id,course_option_id',
             ])
             ->when($academicCourseId, function ($q) use ($academicCourseId) {
-                $q->whereHas(
-                    'courseTopic.courseAssignment.acdemicCourses',
-                    fn($qq) => $qq->where('acdemic_course_id', $academicCourseId)
-                );
+                $q->whereHas('courseTopic.courseAssignment', function ($qq) use ($academicCourseId) {
+                    $qq->where('acdemic_course_id', $academicCourseId);
+                });
             })
-            ->when($subjectId, fn($q) => $q->whereHas('courseTopic.subject', fn($qq) => $qq->where('id', $subjectId)))
+            ->when($subjectId, function ($q) use ($subjectId) {
+               
+                $q->whereHas('courseTopic', function ($qq) use ($subjectId) {
+                    $qq->where('subject_id', $subjectId);
+                });
+            })
             ->when($assignmentId, function ($q) use ($assignmentId) {
                 $q->whereHas(
                     'courseTopic.courseAssignment',
@@ -76,7 +88,7 @@ class CourseContentTestController extends Controller
                 );
             })
             ->orderBy('created_at', 'desc')
-            ->paginate(10)->through(function ($item) {
+            ->paginate($hasFilters ? 10 : 50)->through(function ($item) {
 
                 return [
                     'test_id' => $item->id,
