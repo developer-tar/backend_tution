@@ -25,15 +25,20 @@ Route::get('topic/content/view/{topic_id}', [AssignmentController::class, 'topic
 
 //topic test api with specfic id
 Route::get('topic/test/{test_id}', [AssignmentController::class, 'topicTest']);
+Route::post('topic/test/{test_id}/submit', [AssignmentController::class, 'submitTopicTest']);
 
 //subtopic content api with specfic id
 Route::get('subtopic/content/view/{sub_topic_id}', [AssignmentController::class, 'subTopicContentView']);
 
 //subtopic test api with specfic id
 Route::get('subtopic/test/{sub_topic_test_id}', [AssignmentController::class, 'subTopicTest']);
+Route::post('subtopic/test/{sub_topic_test_id}/submit', [AssignmentController::class, 'submitSubTopicTest']);
 
 //fetch  subjects
 Route::get('fetch/subjects', [AssignmentController::class, 'fetchSubjects']);
+
+//mark content as completed
+Route::post('mark/content/completed', [AssignmentController::class, 'markContentCompleted']);
 
 //mock exam routes for students
 Route::get('my-mock-exams', [MockExamController::class, 'myMockExams']);

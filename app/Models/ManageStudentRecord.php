@@ -22,6 +22,7 @@ class ManageStudentRecord extends Model {
         'paid_at',
         'is_completed',
         'completed_at',
+        'is_overdue',
     ];
 
     public function course() {

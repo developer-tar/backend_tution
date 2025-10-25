@@ -13,4 +13,9 @@ class CourseQuestion extends Model {
     public function options() {
         return $this->hasMany(CourseOption::class, 'course_question_id', 'id');
     }
+
+    public function correctOptions() {
+        return $this->hasMany(CourseOption::class, 'course_question_id', 'id')
+            ->whereHas('answer');
+    }
 }

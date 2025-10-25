@@ -7,21 +7,22 @@ use App\Http\Requests\Api\Student\CAssignmentRequest;
 
 use App\Http\Requests\Api\Student\SubTopicIdRequest;
 use App\Http\Requests\Api\Student\SubTopicTestIdRequest;
+use App\Http\Requests\Api\Student\SubTopicTestSubmissionRequest;
 use App\Http\Requests\Api\Student\TestIdRequest;
 use App\Http\Requests\Api\Student\TopicIdRequest;
-use App\Models\Course;
-use App\Models\CourseAssignment;
-use App\Models\CourseSubTopic;
-use App\Http\Requests\Api\Student\SubTopicTestSubmissionRequest;
 use App\Http\Requests\Api\Student\TopicTestSubmissionRequest;
-use App\Http\Requests\Api\Student\MarkCompletionRequest;
-use App\Models\CourseResultUser;
-use App\Models\ErrorLog;
+use App\Models\AnswerUser;
+use App\Models\Course;
 use App\Models\UserTestAnswer;
+use App\Models\CourseAnswer;
+use App\Models\CourseAssignment;
+use App\Models\CourseResultUser;
+use App\Models\CourseSubTopic;
 use App\Models\CourseTest;
 use App\Models\CourseTopic;
 use App\Models\ManageStudentRecord;
 use App\Models\User;
+use App\Models\Week;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
@@ -328,8 +329,8 @@ class AssignmentController extends Controller {
                     ], 400);
             }
         } catch (\Exception $e) {
-            return errorLog("Failed to fetch the current assignment. Message => {$e->getMessage()}, File => {$e->getFile()},  Line No => {$e->getLine()}, Error Code => {$e->getCode()}. ");
-        
+            \Log::error("Failed to fetch the current assignment. Message => {$e->getMessage()}, File => {$e->getFile()},  Line No => {$e->getLine()}, Error Code => {$e->getCode()}.");
+            return sendError('Error', ['error' => 'An error is occured.'], 500);
         }
     }
 
@@ -382,8 +383,13 @@ class AssignmentController extends Controller {
                 'data' => $data,
             ], 200);
         } catch (\Exception $e) {
-            return errorLog("Failed to fetch the topic. Message => {$e->getMessage()}, File => {$e->getFile()}, Line No => {$e->getLine()}, Error Code => {$e->getCode()}. ");
-          
+            \Log::error("Failed to fetch the topic. Message => {$e->getMessage()}, File => {$e->getFile()}, Line No => {$e->getLine()}, Error Code => {$e->getCode()}.");
+
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred while fetching the topic.',
+                'data' => [],
+            ], 500);
         }
     }
 
@@ -404,20 +410,22 @@ class AssignmentController extends Controller {
             $week = optional($topicTest->courseTopic->courseAssignment)->weeks;
             $now = Carbon::now();
 
-            // if (!$now->between(Carbon::parse($week->start_date), Carbon::parse($week->end_date))) {
-            //     return response()->json([
-            //         'success' => false,
-            //         'message' => 'Right now, you have no access to this give the test.',
-            //         'data' => [],
-            //     ], 400);
-            // }
-
             if (!$week) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Something went wrong: week is invalid or missing.',
+                    'message' => 'Week information not found for this test.',
                     'data' => [],
                 ], 400);
+            }
+
+            if (!$now->between(Carbon::parse($week->start_date), Carbon::parse($week->end_date))) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You cannot access this test right now. Test is only available from ' . 
+                                Carbon::parse($week->start_date)->format('M d, Y') . ' to ' . 
+                                Carbon::parse($week->end_date)->format('M d, Y') . '.',
+                    'data' => [],
+                ], 403);
             }
 
             $questions = $topicTest->question->map(function ($question) {
@@ -446,8 +454,13 @@ class AssignmentController extends Controller {
                 ],
             ]);
         } catch (\Exception $e) {
-            return errorLog("failed to fetch the topic. Message => {$e->getMessage()}, File => {$e->getFile()}, Line No => {$e->getLine()}, Error Code => {$e->getCode()}. ");
-            
+            \Log::error("Failed to fetch the topic. Message => {$e->getMessage()}, File => {$e->getFile()}, Line No => {$e->getLine()}, Error Code => {$e->getCode()}.");
+
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred while fetching the topic.',
+                'data' => [],
+            ], 500);
         }
     }
     public function fetchSubjects() {
@@ -484,8 +497,12 @@ class AssignmentController extends Controller {
                 ], 404);
             }
         } catch (\Exception $e) {
-            return errorLOg("Fetching student subjects failed. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Error Code => {$e->getCode()}.");
-            
+            \Log::error("Fetching student subjects failed. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Error Code => {$e->getCode()}.");
+
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred while fetching subjects.',
+            ], 500);
         }
     }
     public function subTopicContentView(SubTopicIdRequest $request) {
@@ -536,8 +553,13 @@ class AssignmentController extends Controller {
                 'data' => $data,
             ], 200);
         } catch (\Exception $e) {
-            return errorLog("Failed to fetch the subtopic content. Message => {$e->getMessage()}, File => {$e->getFile()}, Line No => {$e->getLine()}, Error Code => {$e->getCode()}. ");
-           
+            \Log::error("Failed to fetch the subtopic content. Message => {$e->getMessage()}, File => {$e->getFile()}, Line No => {$e->getLine()}, Error Code => {$e->getCode()}.");
+
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred while fetching the subtopic.',
+                'data' => [],
+            ], 500);
         }
     }
 
@@ -602,9 +624,7 @@ class AssignmentController extends Controller {
         ], $subTopics->total() ? 200 : 404);
     }
 
-
     private function fetchTopicTests($assignmentIds, $subjectId) {
-        $userId = Auth::id();
         $topicIds = ManageStudentRecord::whereIn('parent_id', $assignmentIds)->pluck('id');
 
         if ($topicIds->isEmpty()) {
@@ -621,19 +641,8 @@ class AssignmentController extends Controller {
             ->whereNull('course_sub_topic_id')
             ->paginate();
 
-        $tests->getCollection()->transform(function ($item) use ($userId) {
+        $tests->getCollection()->transform(function ($item) {
             $record = $item->manageStudentRecord->first();
-            
-            // Get detailed test progress
-            $testProgress = $this->getDetailedTestProgress($item->id, $userId);
-            
-            // Check if the parent topic is completed
-            $topicCompletionRecord = ManageStudentRecord::where([
-                'model_type' => 'App\\Models\\CourseTopic',
-                'model_id' => $item->courseTopic->id,
-                'buyer_id' => $userId
-            ])->first();
-            
             return [
                 'id' => $item->id,
                 'test_name' => $item->name,
@@ -642,11 +651,6 @@ class AssignmentController extends Controller {
                     ? config('constants.completed_reverse.' . optional($record)->is_completed)
                     : null,
                 'completed_at' => optional($record)->completed_at,
-                'topic_completed' => optional($topicCompletionRecord)->is_completed !== null
-                    ? config('constants.completed_reverse.' . optional($topicCompletionRecord)->is_completed)
-                    : null,
-                'topic_completed_at' => optional($topicCompletionRecord)->completed_at,
-                'test_progress' => $testProgress
             ];
         });
 
@@ -658,7 +662,6 @@ class AssignmentController extends Controller {
     }
 
     private function fetchSubTopicTests($assignmentIds, $subjectId) {
-        $userId = Auth::id();
         $topicIds = ManageStudentRecord::whereIn('parent_id', $assignmentIds)->pluck('id');
 
         if ($topicIds->isEmpty()) {
@@ -676,53 +679,27 @@ class AssignmentController extends Controller {
             ->whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $subTopicIds))
             ->paginate();
 
-        $tests->getCollection()->transform(function ($item) use ($userId) {
+        $tests->getCollection()->transform(function ($item) {
             $record = $item->manageStudentRecord->first();
-            
-            // Get detailed test progress
-            $testProgress = $this->getDetailedTestProgress($item->id, $userId);
-            
-            // Check if the parent subtopic is completed
-            $subTopicCompletionRecord = ManageStudentRecord::where([
-                'model_type' => 'App\\Models\\CourseSubTopic',
-                'model_id' => $item->courseSubTopic->id,
-                'buyer_id' => $userId
-            ])->first();
-            
-            // Check if the parent topic is completed
-            $topicCompletionRecord = ManageStudentRecord::where([
-                'model_type' => 'App\\Models\\CourseTopic',
-                'model_id' => $item->courseSubTopic->courseTopic->id,
-                'buyer_id' => $userId
-            ])->first();
-            
             return [
                 'id' => $item->id,
                 'test_name' => $item->name,
-                'topic_name' => optional($item->courseSubTopic->courseTopic)->name,
+                'topic_name' => optional($item->courseTopic)->name,
                 'sub_topic_name' => optional($item->courseSubTopic)->name,
                 'completed' => optional($record)->is_completed !== null
                     ? config('constants.completed_reverse.' . optional($record)->is_completed)
                     : null,
                 'completed_at' => optional($record)->completed_at,
-                'sub_topic_completed' => optional($subTopicCompletionRecord)->is_completed !== null
-                    ? config('constants.completed_reverse.' . optional($subTopicCompletionRecord)->is_completed)
-                    : null,
-                'sub_topic_completed_at' => optional($subTopicCompletionRecord)->completed_at,
-                'topic_completed' => optional($topicCompletionRecord)->is_completed !== null
-                    ? config('constants.completed_reverse.' . optional($topicCompletionRecord)->is_completed)
-                    : null,
-                'topic_completed_at' => optional($topicCompletionRecord)->completed_at,
-                'test_progress' => $testProgress
             ];
         });
 
         return response()->json([
             'success' => true,
-            'message' => $tests->total() ? 'Sub topic test fetched successfully.' : 'No sub topic test record found.',
+            'message' => $tests->total() ? 'Topic test fetched successfully.' : 'No topic test record found.',
             'data' => $tests,
         ], $tests->total() ? 200 : 404);
     }
+
     public function subTopicTest(SubTopicTestIdRequest $request) {
         try {
             $subTopicTest = CourseTest::with('courseSubTopic.courseTopic.courseAssignment.weeks', 'question.options')
@@ -740,20 +717,22 @@ class AssignmentController extends Controller {
             $week = optional($subTopicTest->courseSubTopic->courseTopic->courseAssignment)->weeks;
             $now = Carbon::now();
 
-            // if (!$now->between(Carbon::parse($week->start_date), Carbon::parse($week->end_date))) {
-            //     return response()->json([
-            //         'success' => false,
-            //         'message' => 'Right now, you have no access to this give the test.',
-            //         'data' => [],
-            //     ], 400);
-            // }
-
             if (!$week) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Something went wrong: week is invalid or missing.',
+                    'message' => 'Week information not found for this sub topic test.',
                     'data' => [],
                 ], 400);
+            }
+
+            if (!$now->between(Carbon::parse($week->start_date), Carbon::parse($week->end_date))) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You cannot access this sub topic test right now. Test is only available from ' . 
+                                Carbon::parse($week->start_date)->format('M d, Y') . ' to ' . 
+                                Carbon::parse($week->end_date)->format('M d, Y') . '.',
+                    'data' => [],
+                ], 403);
             }
 
             $questions = $subTopicTest->question->map(function ($question) {
@@ -782,8 +761,13 @@ class AssignmentController extends Controller {
                 ],
             ]);
         } catch (\Exception $e) {
-            return errorLog("Failed to fetch the sub topic test. Message => {$e->getMessage()}, File => {$e->getFile()}, Line No => {$e->getLine()}, Error Code => {$e->getCode()}. ");
-           
+            \Log::error("Failed to fetch the sub topic test. Message => {$e->getMessage()}, File => {$e->getFile()}, Line No => {$e->getLine()}, Error Code => {$e->getCode()}.");
+
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred while fetching the sub topic test.',
+                'data' => [],
+            ], 500);
         }
     }
 
@@ -818,7 +802,7 @@ class AssignmentController extends Controller {
                 ], 400);
             }
 
-            if (!$now->between(Carbon::parse($week->start_date), Carbon::parse($week->end_date))) {
+            if (!$now->between(Carbon::parse(time: $week->start_date), Carbon::parse($week->end_date))) {
                 return response()->json([
                     'success' => false,
                     'message' => 'You cannot submit this test right now. Test is only available from ' . 
@@ -836,7 +820,7 @@ class AssignmentController extends Controller {
             $existingResult = CourseResultUser::where([
                 'student_id' => $userId,
                 'test_id' => $testId
-            ])->orderBy('attempt_count', 'desc')->first();
+            ])->first();
 
             $attemptCount = $existingResult ? $existingResult->attempt_count + 1 : 1;
 
@@ -857,6 +841,7 @@ class AssignmentController extends Controller {
                     $correctAnswers++;
                 }
 
+                // Store user answer in answer_user table (simplified approach)
                 // Store user answer in new table
                 UserTestAnswer::create([
                     'user_id' => $userId,
@@ -873,13 +858,17 @@ class AssignmentController extends Controller {
             $scorePercentage = $totalQuestions > 0 ? round(($correctAnswers / $totalQuestions) * 100, 2) : 0;
             $isCompleted = ($correctAnswers == $totalQuestions);
 
-            // Store result in course_result_users (create new record for each attempt)
-            CourseResultUser::create([
-                'student_id' => $userId,
-                'test_id' => $testId,
-                'test_score' => $scorePercentage,
-                'attempt_count' => $attemptCount
-            ]);
+            // Store/Update result in course_result_users
+            CourseResultUser::updateOrCreate(
+                [
+                    'student_id' => $userId,
+                    'test_id' => $testId
+                ],
+                [
+                    'test_score' => $scorePercentage,
+                    'attempt_count' => $attemptCount
+                ]
+            );
 
             // Update ManageStudentRecord if all answers are correct
             if ($isCompleted) {
@@ -910,8 +899,13 @@ class AssignmentController extends Controller {
             ], 200);
 
         } catch (\Exception $e) {
-            return errorLog("Failed to submit topic test. Message => {$e->getMessage()}, File => {$e->getFile()}, Line No => {$e->getLine()}, Error Code => {$e->getCode()}. ");
-            
+            \Log::error("Failed to submit topic test. Message => {$e->getMessage()}, File => {$e->getFile()}, Line No => {$e->getLine()}, Error Code => {$e->getCode()}.");
+
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred while submitting the test.',
+                'data' => [],
+            ], 500);
         }
     }
 
@@ -941,7 +935,7 @@ class AssignmentController extends Controller {
             if (!$week) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Week information not found for this test.',
+                    'message' => 'Week information not found for this sub topic test.',
                     'data' => [],
                 ], 400);
             }
@@ -949,7 +943,7 @@ class AssignmentController extends Controller {
             if (!$now->between(Carbon::parse($week->start_date), Carbon::parse($week->end_date))) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'You cannot submit this test right now. Test is only available from ' . 
+                    'message' => 'You cannot submit this sub topic test right now. Test is only available from ' . 
                                 Carbon::parse($week->start_date)->format('M d, Y') . ' to ' . 
                                 Carbon::parse($week->end_date)->format('M d, Y') . '.',
                     'data' => [],
@@ -964,7 +958,7 @@ class AssignmentController extends Controller {
             $existingResult = CourseResultUser::where([
                 'student_id' => $userId,
                 'test_id' => $testId
-            ])->orderBy('attempt_count', 'desc')->first();
+            ])->first();
 
             $attemptCount = $existingResult ? $existingResult->attempt_count + 1 : 1;
 
@@ -1001,13 +995,17 @@ class AssignmentController extends Controller {
             $scorePercentage = $totalQuestions > 0 ? round(($correctAnswers / $totalQuestions) * 100, 2) : 0;
             $isCompleted = ($correctAnswers == $totalQuestions);
 
-            // Store result in course_result_users (create new record for each attempt)
-            CourseResultUser::create([
-                'student_id' => $userId,
-                'test_id' => $testId,
-                'test_score' => $scorePercentage,
-                'attempt_count' => $attemptCount
-            ]);
+            // Store/Update result in course_result_users
+            CourseResultUser::updateOrCreate(
+                [
+                    'student_id' => $userId,
+                    'test_id' => $testId
+                ],
+                [
+                    'test_score' => $scorePercentage,
+                    'attempt_count' => $attemptCount
+                ]
+            );
 
             // Update ManageStudentRecord if all answers are correct
             if ($isCompleted) {
@@ -1038,313 +1036,13 @@ class AssignmentController extends Controller {
             ], 200);
 
         } catch (\Exception $e) {
-            return errorLog("Failed to submit sub topic test. Message => {$e->getMessage()}, File => {$e->getFile()}, Line No => {$e->getLine()}, Error Code => {$e->getCode()}. ");
-       
-        }
-    }
-
-    /**
-     * Mark content as completed
-     */
-    public function markContentCompleted(MarkCompletionRequest $request)
-    {
-        try {
-            $userId = Auth::id();
-            $modelType = $request->input('model_type');
-            $modelId = $request->input('model_id');
-
-            // Get the actual model class from config
-            $actualModelType = config("constants.assignment_content.{$modelType}");
-
-            if (!$actualModelType) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Invalid model type provided.',
-                    'data' => []
-                ], 400);
-            }
-
-            // Validate if the model exists
-            $modelExists = $actualModelType::find($modelId);
-            if (!$modelExists) {
-                return response()->json([
-                    'success' => false,
-                    'message' => ucfirst(strtolower(str_replace('Content', '', $modelType))) . ' not found.',
-                    'data' => []
-                ], 404);
-            }
-
-            // Check if already completed
-            $existingRecord = ManageStudentRecord::where([
-                'model_type' => $actualModelType,
-                'model_id' => $modelId,
-                'buyer_id' => $userId
-            ])->first();
-
-            if ($existingRecord && $existingRecord->is_completed == config('constants.completed.YES')) {
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Content is already completed.',
-                    'data' => [
-                        'model_type' => $modelType,
-                        'model_id' => $modelId,
-                        'is_completed' => true,
-                        'completed_at' => $existingRecord->completed_at,
-                        'status' => 'already_completed'
-                    ]
-                ], 200);
-            }
-
-            // Mark as completed
-            $completionRecord = ManageStudentRecord::updateOrCreate(
-                [
-                    'model_type' => $actualModelType,
-                    'model_id' => $modelId,
-                    'buyer_id' => $userId
-                ],
-                [
-                    'is_completed' => config('constants.completed.YES'),
-                    'completed_at' => now()
-                ]
-            );
+            \Log::error("Failed to submit sub topic test. Message => {$e->getMessage()}, File => {$e->getFile()}, Line No => {$e->getLine()}, Error Code => {$e->getCode()}.");
 
             return response()->json([
-                'success' => true,
-                'message' => 'Content marked as completed successfully.',
-                'data' => [
-                    'model_type' => $modelType,
-                    'model_id' => $modelId,
-                    'is_completed' => true,
-                    'completed_at' => $completionRecord->completed_at,
-                    'status' => 'newly_completed'
-                ]
-            ], 200);
-
-        } catch (\Exception $e) {
-            return errorLog("Failed to mark content as completed. Message => {$e->getMessage()}, File => {$e->getFile()}, Line No => {$e->getLine()}, Error Code => {$e->getCode()}.");
-          
+                'success' => false,
+                'message' => 'An error occurred while submitting the sub topic test.',
+                'data' => [],
+            ], 500);
         }
-    }
-    /**
-     * Get detailed test progress with complete attempt history
-     */
-    private function getDetailedTestProgress($testId, $userId)
-    {
-        // Get all attempts for this test
-        $allAttempts = CourseResultUser::where([
-            'student_id' => $userId,
-            'test_id' => $testId
-        ])->orderBy('attempt_count')->get();
-
-        if ($allAttempts->isEmpty()) {
-            return [
-                'total_attempts' => 0,
-                'best_score' => 0,
-                'latest_score' => 0,
-                'is_completed' => false,
-                'first_attempted' => null,
-                'last_attempted' => null,
-                'attempt_history' => []
-            ];
-        }
-
-        // Get test completion status
-        $isCompleted = ManageStudentRecord::where([
-            'model_type' => 'App\\Models\\CourseTest',
-            'model_id' => $testId,
-            'buyer_id' => $userId,
-            'is_completed' => config('constants.completed.YES')
-        ])->exists();
-
-        // Get total questions for this test
-        $totalQuestions = CourseTest::find($testId)->question()->count();
-
-        // Build detailed attempt history
-        $attemptHistory = [];
-        foreach ($allAttempts as $attempt) {
-            // Get answers for this specific attempt
-            $attemptAnswers = UserTestAnswer::where([
-                'user_id' => $userId,
-                'test_id' => $testId,
-                'attempt_number' => $attempt->attempt_count
-            ])->get();
-
-            $correctAnswers = $attemptAnswers->where('is_correct', true)->count();
-            $incorrectAnswers = $attemptAnswers->where('is_correct', false)->count();
-            $unanswered = $totalQuestions - $attemptAnswers->count();
-            $totalTimeSpent = $attemptAnswers->sum('time_taken_seconds');
-
-            // Get question-wise breakdown
-            $questionBreakdown = [];
-            foreach ($attemptAnswers as $answer) {
-                $question = CourseTest::find($testId)->question()->find($answer->question_id);
-                $questionBreakdown[] = [
-                    'question_id' => $answer->question_id,
-                    'question_text' => $question ? $question->question : 'Question not found',
-                    'selected_option_id' => $answer->selected_option_id,
-                    'is_correct' => $answer->is_correct,
-                    'time_taken_seconds' => $answer->time_taken_seconds,
-                    'status' => $answer->is_correct ? 'correct' : 'incorrect'
-                ];
-            }
-
-            // Calculate improvement from previous attempt
-            $improvement = 0;
-            if ($attempt->attempt_count > 1) {
-                $previousAttempt = $allAttempts->where('attempt_count', $attempt->attempt_count - 1)->first();
-                if ($previousAttempt) {
-                    $improvement = $attempt->test_score - $previousAttempt->test_score;
-                }
-            }
-
-            $attemptHistory[] = [
-                'attempt_number' => $attempt->attempt_count,
-                'score_percentage' => $attempt->test_score,
-                'correct_answers' => $correctAnswers,
-                'incorrect_answers' => $incorrectAnswers,
-                'unanswered' => $unanswered,
-                'total_questions' => $totalQuestions,
-                'total_time_spent_seconds' => $totalTimeSpent,
-                'average_time_per_question' => $attemptAnswers->count() > 0 ? round($totalTimeSpent / $attemptAnswers->count(), 2) : 0,
-                'started_at' => $attempt->created_at,
-                'completed_at' => $attempt->updated_at,
-                'improvement_from_previous' => $improvement,
-                'question_breakdown' => $questionBreakdown,
-                'performance_summary' => [
-                    'accuracy_rate' => $totalQuestions > 0 ? round(($correctAnswers / $totalQuestions) * 100, 2) : 0,
-                    'completion_rate' => $totalQuestions > 0 ? round(($attemptAnswers->count() / $totalQuestions) * 100, 2) : 0,
-                    'speed_score' => $attemptAnswers->count() > 0 ? round(60 / ($totalTimeSpent / $attemptAnswers->count()), 2) : 0
-                ]
-            ];
-        }
-
-        return [
-            'total_attempts' => $allAttempts->count(),
-            'best_score' => $allAttempts->max('test_score'),
-            'latest_score' => $allAttempts->last()->test_score,
-            'average_score' => round($allAttempts->avg('test_score'), 2),
-            'is_completed' => $isCompleted,
-            'first_attempted' => $allAttempts->first()->created_at,
-            'last_attempted' => $allAttempts->last()->updated_at,
-            'total_time_spent' => $attemptHistory ? array_sum(array_column($attemptHistory, 'total_time_spent_seconds')) : 0,
-            'overall_improvement' => $allAttempts->count() > 1 ? $allAttempts->last()->test_score - $allAttempts->first()->test_score : 0,
-            'attempt_history' => $attemptHistory,
-            'performance_analytics' => [
-                'consistency_score' => $this->calculateConsistencyScore($allAttempts),
-                'learning_curve' => $this->calculateLearningCurve($allAttempts),
-                'weak_areas' => $this->identifyWeakAreas($testId, $userId),
-                'strong_areas' => $this->identifyStrongAreas($testId, $userId)
-            ]
-        ];
-    }
-
-    /**
-     * Calculate consistency score based on score variations
-     */
-    private function calculateConsistencyScore($attempts)
-    {
-        if ($attempts->count() < 2) return 100;
-        
-        $scores = $attempts->pluck('test_score')->toArray();
-        $mean = array_sum($scores) / count($scores);
-        $variance = array_sum(array_map(function($score) use ($mean) {
-            return pow($score - $mean, 2);
-        }, $scores)) / count($scores);
-        
-        $standardDeviation = sqrt($variance);
-        
-        // Convert to consistency score (lower deviation = higher consistency)
-        return max(0, 100 - ($standardDeviation * 2));
-    }
-
-    /**
-     * Calculate learning curve trend
-     */
-    private function calculateLearningCurve($attempts)
-    {
-        if ($attempts->count() < 2) return 'insufficient_data';
-        
-        $scores = $attempts->pluck('test_score')->toArray();
-        $firstHalf = array_slice($scores, 0, ceil(count($scores) / 2));
-        $secondHalf = array_slice($scores, ceil(count($scores) / 2));
-        
-        $firstAvg = array_sum($firstHalf) / count($firstHalf);
-        $secondAvg = array_sum($secondHalf) / count($secondHalf);
-        
-        if ($secondAvg > $firstAvg + 5) return 'improving';
-        if ($secondAvg < $firstAvg - 5) return 'declining';
-        return 'stable';
-    }
-
-    /**
-     * Identify weak areas (questions frequently answered incorrectly)
-     */
-    private function identifyWeakAreas($testId, $userId)
-    {
-        $incorrectAnswers = UserTestAnswer::where([
-            'user_id' => $userId,
-            'test_id' => $testId,
-            'is_correct' => false
-        ])->get();
-
-        $questionFrequency = [];
-        foreach ($incorrectAnswers as $answer) {
-            $questionId = $answer->question_id;
-            if (!isset($questionFrequency[$questionId])) {
-                $questionFrequency[$questionId] = 0;
-            }
-            $questionFrequency[$questionId]++;
-        }
-
-        arsort($questionFrequency);
-        $weakAreas = [];
-        
-        foreach (array_slice($questionFrequency, 0, 3, true) as $questionId => $frequency) {
-            $question = CourseTest::find($testId)->question()->find($questionId);
-            $weakAreas[] = [
-                'question_id' => $questionId,
-                'question_text' => $question ? $question->question : 'Question not found',
-                'incorrect_count' => $frequency,
-                'difficulty_level' => $frequency > 2 ? 'high' : ($frequency > 1 ? 'medium' : 'low')
-            ];
-        }
-
-        return $weakAreas;
-    }
-
-    /**
-     * Identify strong areas (questions frequently answered correctly)
-     */
-    private function identifyStrongAreas($testId, $userId)
-    {
-        $correctAnswers = UserTestAnswer::where([
-            'user_id' => $userId,
-            'test_id' => $testId,
-            'is_correct' => true
-        ])->get();
-
-        $questionFrequency = [];
-        foreach ($correctAnswers as $answer) {
-            $questionId = $answer->question_id;
-            if (!isset($questionFrequency[$questionId])) {
-                $questionFrequency[$questionId] = 0;
-            }
-            $questionFrequency[$questionId]++;
-        }
-
-        arsort($questionFrequency);
-        $strongAreas = [];
-        
-        foreach (array_slice($questionFrequency, 0, 3, true) as $questionId => $frequency) {
-            $question = CourseTest::find($testId)->question()->find($questionId);
-            $strongAreas[] = [
-                'question_id' => $questionId,
-                'question_text' => $question ? $question->question : 'Question not found',
-                'correct_count' => $frequency,
-                'mastery_level' => $frequency > 2 ? 'excellent' : ($frequency > 1 ? 'good' : 'average')
-            ];
-        }
-
-        return $strongAreas;
     }
 }

@@ -2,7 +2,10 @@
 
 namespace App\Http\Requests\Api\Student;
 
+use App\Models\ManageStudentRecord;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Auth;
 
 class TestIdRequest extends FormRequest
 {
@@ -30,7 +33,26 @@ class TestIdRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'test_id' => ['required', 'integer', 'exists:course_tests,id'],
+            'test_id' => [
+                'required', 
+                'integer', 
+                'exists:course_tests,id',
+                function ($attribute, $value, $fail) {
+                    $record = ManageStudentRecord::where([
+                        'model_type' => 'App\\Models\\CourseTest',
+                        'model_id' => $value,
+                        'buyer_id' => Auth::id()
+                    ])->first();
+
+                    if ($record && $record->is_completed == config('constants.completed.YES')) {
+                        $fail('You have already completed this test.');
+                    }
+                    
+                    if ($record && $record->is_overdue) {
+                        $fail('This test is overdue and cannot be attempted.');
+                    }
+                }
+            ],
         ];
     }
 }

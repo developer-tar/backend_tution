@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests\Api\Student;
 
+use App\Models\ManageStudentRecord;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\Auth;
 
 class SubTopicTestIdRequest extends FormRequest
 {
@@ -31,8 +33,28 @@ class SubTopicTestIdRequest extends FormRequest
      */
     public function rules(): array
     {
+        
         return [
-            'sub_topic_test_id' => ['required', 'integer', 'exists:course_tests,id'],
+            'sub_topic_test_id' => [
+                'required', 
+                'integer', 
+                'exists:course_tests,id',
+                function ($attribute, $value, $fail) {
+                    $record = ManageStudentRecord::where([
+                        'model_type' => 'App\\Models\\CourseTest',
+                        'model_id' => $value,
+                        'buyer_id' => Auth::id()
+                    ])->first();
+
+                    if ($record && $record->is_completed == config('constants.completed.YES')) {
+                        $fail('You have already completed this sub-topic test.');
+                    }
+                    
+                    if ($record && $record->is_overdue) {
+                        $fail('This sub-topic test is overdue and cannot be attempted.');
+                    }
+                }
+            ],
         ];
     }
 }
