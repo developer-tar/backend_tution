@@ -18,6 +18,7 @@ use App\Http\Requests\Api\Student\MarkCompletionRequest;
 use App\Models\CourseResultUser;
 use App\Models\ErrorLog;
 use App\Models\UserTestAnswer;
+use App\Models\Week;
 use App\Models\CourseTest;
 use App\Models\CourseTopic;
 use App\Models\ManageStudentRecord;
@@ -1125,6 +1126,446 @@ class AssignmentController extends Controller {
           
         }
     }
+
+    /**
+     * Get current assignment detailed statistics
+     */
+    public function currentAssignmentStats(CAssignmentRequest $request)
+    {
+        try {
+            $userId = auth()->id();
+            $subjectId = $request->subject_id;
+            $date = Carbon::now();
+            
+            // Step 1: Get ManageStudentRecord IDs linked to user via Course and filtered by subject
+            $coursesQuery = Course::whereHas(
+                'manageStudentRecord',
+                fn($q) => $q->where('buyer_id', $userId)
+            )
+                ->whereHas('subjects', fn($q) => $q->where('subjects.id', $subjectId))
+                ->with(['manageStudentRecord:id,model_id,model_type', 'subjects']);
+                
+            $courses = $coursesQuery->get();
+            $courseIds = $courses->flatMap(fn($course) => $course->manageStudentRecord->pluck('id'))
+                ->values();
+         
+            if ($courseIds->isEmpty()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'No course found.',
+                    'data' => [],
+                ], 404);
+            }
+          
+            // Step 2: Get Assignment IDs linked to these courses and within date range (same as currentAssignment)
+            $assignmentIds = CourseAssignment::with('manageStudentRecord', 'weeks')
+                ->whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $courseIds))
+                ->whereHas('weeks', fn($q) => $q->where('start_date', '<=', $date)->where('end_date', '>=', $date))
+                ->get()
+                ->flatMap(fn($assignment) => $assignment->manageStudentRecord->pluck('id'))
+                ->unique()
+                ->values();
+        
+            if ($assignmentIds->isEmpty()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'No assignment found for this course in current week.',
+                    'data' => [],
+                ], 404);
+            }
+
+            // Get current week details from CourseAssignment
+            $currentWeekAssignment = CourseAssignment::with('weeks')
+                ->whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $courseIds))
+                ->whereHas('weeks', fn($q) => $q->where('start_date', '<=', $date)->where('end_date', '>=', $date))
+                ->first();
+            
+            $currentWeek = $currentWeekAssignment ? $currentWeekAssignment->weeks : null;
+            
+            // Get course details (without end_date as it doesn't exist in courses table)
+            // Since $courseIds are already ManageStudentRecord IDs linked to courses, 
+            // we need to get the actual course IDs first
+            $actualCourseIds = ManageStudentRecord::whereIn('id', $courseIds)
+                ->where('model_type', 'App\Models\Course')
+                ->pluck('model_id');
+                
+            $courseDetails = Course::whereIn('id', $actualCourseIds)
+                ->select('id', 'name', 'created_at')
+                ->first();
+         
+            // Initialize statistics arrays
+            $topicsStats = null;
+            $subTopicsStats = null;
+            $topicTestsStats = null;
+            $subTopicTestsStats = null;
+
+            // Check and get statistics for each content type (similar to currentAssignment switch case)
+            
+            // Check if topics exist for current assignment
+            $topicIds = ManageStudentRecord::whereIn('parent_id', $assignmentIds)->pluck('id');
+            $hasTopics = CourseTopic::whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $topicIds))->exists();
+            
+            if ($hasTopics) {
+                $topicsStats = $this->getTopicsStatistics($assignmentIds, $userId, $subjectId);
+            }
+
+            // Check if subtopics exist for current assignment
+            $subTopicIds = ManageStudentRecord::whereIn('parent_id', $topicIds)->pluck('id');
+            $hasSubTopics = CourseSubTopic::whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $subTopicIds))->exists();
+            
+            if ($hasSubTopics) {
+                $subTopicsStats = $this->getSubTopicsStatistics($assignmentIds, $userId);
+            }
+
+            // Check if topic tests exist for current assignment
+            $hasTopicTests = CourseTest::whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $topicIds))
+                ->whereNull('course_sub_topic_id')
+                ->exists();
+                
+            if ($hasTopicTests) {
+                $topicTestsStats = $this->getTopicTestsStatistics($assignmentIds, $userId);
+            }
+
+            // Check if subtopic tests exist for current assignment
+            $hasSubTopicTests = CourseTest::whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $subTopicIds))
+                ->whereNotNull('course_sub_topic_id')
+                ->exists();
+                
+            if ($hasSubTopicTests) {
+                $subTopicTestsStats = $this->getSubTopicTestsStatistics($assignmentIds, $userId);
+            }
+
+            // Calculate overall progress only if we have any statistics
+            $overallProgress = $this->calculateOverallProgress($topicsStats, $subTopicsStats, $topicTestsStats, $subTopicTestsStats);
+            $response = [
+                'success' => true,
+                'message' => 'Assignment statistics fetched successfully.',
+                'data' => [
+                    'course_info' => [
+                        'course_name' => $courseDetails->name ?? 'Unknown Course',
+                        'end_date' => $currentWeek->end_date ?? null,
+                        'days_remaining' => $currentWeek && $currentWeek->end_date ? 
+                            $this->formatTimeRemaining(Carbon::parse($currentWeek->end_date)) : null,
+                        'course_started' => $courseDetails->created_at ?? null
+                    ],
+                    'current_week_info' => [
+                        'week_id' => $currentWeek->id ?? null,
+                        'week_name' => $currentWeek->name ?? 'Current Week',
+                        'week_start_date' => $currentWeek->start_date ?? null,
+                        'week_end_date' => $currentWeek->end_date ?? null,
+                        'days_remaining_in_week' => $currentWeek ? 
+                            max(0, $date->diffInDays(Carbon::parse($currentWeek->end_date), false)) : null,
+                        'week_progress_percentage' => $currentWeek ? 
+                            min(100, max(0, round((($date->diffInDays(Carbon::parse($currentWeek->start_date), false) + 1) / 
+                            (Carbon::parse($currentWeek->start_date)->diffInDays(Carbon::parse($currentWeek->end_date), false) + 1)) * 100, 2))) : 0
+                    ],
+                    'topics_statistics' => $topicsStats ?? [
+                        'total_topics' => 0,
+                        'completed_topics' => 0,
+                        'pending_topics' => 0,
+                        'completion_percentage' => 0,
+                        'first_completion' => null,
+                        'latest_completion' => null,
+                        'completed_topics_list' => []
+                    ],
+                    'subtopics_statistics' => $subTopicsStats ?? [
+                        'total_subtopics' => 0,
+                        'completed_subtopics' => 0,
+                        'pending_subtopics' => 0,
+                        'completion_percentage' => 0,
+                        'first_completion' => null,
+                        'latest_completion' => null,
+                        'completed_subtopics_list' => []
+                    ],
+                    'topic_tests_statistics' => $topicTestsStats ?? [
+                        'total_tests' => 0,
+                        'attempted_tests' => 0,
+                        'pending_tests' => 0,
+                        'total_attempts' => 0,
+                        'first_attempt' => null,
+                        'latest_attempt' => null,
+                        'average_score' => 0,
+                        'best_score' => 0,
+                        'test_details' => []
+                    ],
+                    'subtopic_tests_statistics' => $subTopicTestsStats ?? [
+                        'total_tests' => 0,
+                        'attempted_tests' => 0,
+                        'pending_tests' => 0,
+                        'total_attempts' => 0,
+                        'first_attempt' => null,
+                        'latest_attempt' => null,
+                        'average_score' => 0,
+                        'best_score' => 0,
+                        'test_details' => []
+                    ],
+                    'overall_progress' => $overallProgress,
+                    'generated_at' => now()->toISOString()
+                ]
+            ];
+
+            return response()->json($response, 200);
+
+        } catch (\Exception $e) {
+            return errorLog("Failed to fetch assignment statistics. Message => {$e->getMessage()}, File => {$e->getFile()}, Line No => {$e->getLine()}, Error Code => {$e->getCode()}.");
+        }
+    }
+
+    /**
+     * Get topics completion statistics
+     */
+    private function getTopicsStatistics($assignmentIds, $userId, $subjectId = null)
+    {
+        $topicIds = ManageStudentRecord::whereIn('parent_id', $assignmentIds)->pluck('id');
+        
+        $topicsQuery = CourseTopic::whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $topicIds))
+            ->with(['manageStudentRecord' => fn($q) => $q->where('buyer_id', $userId)]);
+            
+        // Add subject filtering if provided
+        if ($subjectId) {
+            $topicsQuery->where('subject_id', $subjectId);
+        }
+        
+        $topics = $topicsQuery->get();
+
+        $completed = $topics->filter(function($topic) {
+            $record = $topic->manageStudentRecord->first();
+            return $record && $record->is_completed == config('constants.completed.YES');
+        });
+
+        $firstCompleted = $completed->min(function($topic) {
+            return $topic->manageStudentRecord->first()->completed_at;
+        });
+
+        $latestCompleted = $completed->max(function($topic) {
+            return $topic->manageStudentRecord->first()->completed_at;
+        });
+
+        return [
+            'total_topics' => $topics->count(),
+            'completed_topics' => $completed->count(),
+            'pending_topics' => $topics->count() - $completed->count(),
+            'completion_percentage' => $topics->count() > 0 ? round(($completed->count() / $topics->count()) * 100, 2) : 0,
+            'first_completion' => $firstCompleted,
+            'latest_completion' => $latestCompleted,
+            'completed_topics_list' => $completed->map(function($topic) {
+                $record = $topic->manageStudentRecord->first();
+                return [
+                    'id' => $topic->id,
+                    'name' => $topic->name,
+                    'completed_at' => $record->completed_at
+                ];
+            })->values()
+        ];
+    }
+
+    /**
+     * Get subtopics completion statistics
+     */
+    private function getSubTopicsStatistics($assignmentIds, $userId)
+    {
+        $topicIds = ManageStudentRecord::whereIn('parent_id', $assignmentIds)->pluck('id');
+        $subTopicIds = ManageStudentRecord::whereIn('parent_id', $topicIds)->pluck('id');
+
+        $subTopics = CourseSubTopic::whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $subTopicIds))
+            ->with(['manageStudentRecord' => fn($q) => $q->where('buyer_id', $userId), 'courseTopic'])
+            ->get();
+
+        $completed = $subTopics->filter(function($subTopic) {
+            $record = $subTopic->manageStudentRecord->first();
+            return $record && $record->is_completed == config('constants.completed.YES');
+        });
+
+        $firstCompleted = $completed->min(function($subTopic) {
+            return $subTopic->manageStudentRecord->first()->completed_at;
+        });
+
+        $latestCompleted = $completed->max(function($subTopic) {
+            return $subTopic->manageStudentRecord->first()->completed_at;
+        });
+
+        return [
+            'total_subtopics' => $subTopics->count(),
+            'completed_subtopics' => $completed->count(),
+            'pending_subtopics' => $subTopics->count() - $completed->count(),
+            'completion_percentage' => $subTopics->count() > 0 ? round(($completed->count() / $subTopics->count()) * 100, 2) : 0,
+            'first_completion' => $firstCompleted,
+            'latest_completion' => $latestCompleted,
+            'completed_subtopics_list' => $completed->map(function($subTopic) {
+                $record = $subTopic->manageStudentRecord->first();
+                return [
+                    'id' => $subTopic->id,
+                    'name' => $subTopic->name,
+                    'topic_name' => $subTopic->courseTopic->name,
+                    'completed_at' => $record->completed_at
+                ];
+            })->values()
+        ];
+    }
+
+    /**
+     * Get topic tests attempt statistics
+     */
+    private function getTopicTestsStatistics($assignmentIds, $userId)
+    {
+        $topicIds = ManageStudentRecord::whereIn('parent_id', $assignmentIds)->pluck('id');
+
+        $tests = CourseTest::whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $topicIds))
+            ->whereNull('course_sub_topic_id')
+            ->with('courseTopic')
+            ->get();
+
+        $totalAttempts = 0;
+        $completedTests = 0;
+        $allAttempts = collect();
+        $testDetails = [];
+
+        foreach ($tests as $test) {
+            $attempts = CourseResultUser::where([
+                'student_id' => $userId,
+                'test_id' => $test->id
+            ])->orderBy('attempt_count')->get();
+
+            $totalAttempts += $attempts->count();
+            $allAttempts = $allAttempts->merge($attempts);
+
+            if ($attempts->isNotEmpty()) {
+                $completedTests++;
+                $testDetails[] = [
+                    'test_id' => $test->id,
+                    'test_name' => $test->name,
+                    'topic_name' => $test->courseTopic->name,
+                    'total_attempts' => $attempts->count(),
+                    'first_attempt' => [
+                        'score' => $attempts->first()->test_score,
+                        'attempted_at' => $attempts->first()->created_at
+                    ],
+                    'latest_attempt' => [
+                        'score' => $attempts->last()->test_score,
+                        'attempted_at' => $attempts->last()->updated_at
+                    ],
+                    'best_score' => $attempts->max('test_score'),
+                    'average_score' => round($attempts->avg('test_score'), 2)
+                ];
+            }
+        }
+
+        return [
+            'total_tests' => $tests->count(),
+            'attempted_tests' => $completedTests,
+            'pending_tests' => $tests->count() - $completedTests,
+            'total_attempts' => $totalAttempts,
+            'first_attempt' => $allAttempts->isNotEmpty() ? [
+                'score' => $allAttempts->min('test_score'),
+                'attempted_at' => $allAttempts->min('created_at')
+            ] : null,
+            'latest_attempt' => $allAttempts->isNotEmpty() ? [
+                'score' => $allAttempts->sortByDesc('updated_at')->first()->test_score,
+                'attempted_at' => $allAttempts->max('updated_at')
+            ] : null,
+            'average_score' => $allAttempts->isNotEmpty() ? round($allAttempts->avg('test_score'), 2) : 0,
+            'best_score' => $allAttempts->isNotEmpty() ? $allAttempts->max('test_score') : 0,
+            'test_details' => $testDetails
+        ];
+    }
+
+    /**
+     * Get subtopic tests attempt statistics
+     */
+    private function getSubTopicTestsStatistics($assignmentIds, $userId)
+    {
+        $topicIds = ManageStudentRecord::whereIn('parent_id', $assignmentIds)->pluck('id');
+        $subTopicIds = ManageStudentRecord::whereIn('parent_id', $topicIds)->pluck('id');
+
+        $tests = CourseTest::whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $subTopicIds))
+            ->with(['courseSubTopic.courseTopic'])
+            ->get();
+
+        $totalAttempts = 0;
+        $completedTests = 0;
+        $allAttempts = collect();
+        $testDetails = [];
+
+        foreach ($tests as $test) {
+            $attempts = CourseResultUser::where([
+                'student_id' => $userId,
+                'test_id' => $test->id
+            ])->orderBy('attempt_count')->get();
+
+            $totalAttempts += $attempts->count();
+            $allAttempts = $allAttempts->merge($attempts);
+
+            if ($attempts->isNotEmpty()) {
+                $completedTests++;
+                $testDetails[] = [
+                    'test_id' => $test->id,
+                    'test_name' => $test->name,
+                    'subtopic_name' => $test->courseSubTopic->name,
+                    'topic_name' => $test->courseSubTopic->courseTopic->name,
+                    'total_attempts' => $attempts->count(),
+                    'first_attempt' => [
+                        'score' => $attempts->first()->test_score,
+                        'attempted_at' => $attempts->first()->created_at
+                    ],
+                    'latest_attempt' => [
+                        'score' => $attempts->last()->test_score,
+                        'attempted_at' => $attempts->last()->updated_at
+                    ],
+                    'best_score' => $attempts->max('test_score'),
+                    'average_score' => round($attempts->avg('test_score'), 2)
+                ];
+            }
+        }
+
+        return [
+            'total_tests' => $tests->count(),
+            'attempted_tests' => $completedTests,
+            'pending_tests' => $tests->count() - $completedTests,
+            'total_attempts' => $totalAttempts,
+            'first_attempt' => $allAttempts->isNotEmpty() ? [
+                'score' => $allAttempts->min('test_score'),
+                'attempted_at' => $allAttempts->min('created_at')
+            ] : null,
+            'latest_attempt' => $allAttempts->isNotEmpty() ? [
+                'score' => $allAttempts->sortByDesc('updated_at')->first()->test_score,
+                'attempted_at' => $allAttempts->max('updated_at')
+            ] : null,
+            'average_score' => $allAttempts->isNotEmpty() ? round($allAttempts->avg('test_score'), 2) : 0,
+            'best_score' => $allAttempts->isNotEmpty() ? $allAttempts->max('test_score') : 0,
+            'test_details' => $testDetails
+        ];
+    }
+
+    /**
+     * Calculate overall progress statistics
+     */
+    private function calculateOverallProgress($topicsStats, $subTopicsStats, $topicTestsStats, $subTopicTestsStats)
+    {
+        // Handle null values for each statistics type
+        $totalItems = ($topicsStats['total_topics'] ?? 0) + ($subTopicsStats['total_subtopics'] ?? 0) + 
+                     ($topicTestsStats['total_tests'] ?? 0) + ($subTopicTestsStats['total_tests'] ?? 0);
+        
+        $completedItems = ($topicsStats['completed_topics'] ?? 0) + ($subTopicsStats['completed_subtopics'] ?? 0) + 
+                         ($topicTestsStats['attempted_tests'] ?? 0) + ($subTopicTestsStats['attempted_tests'] ?? 0);
+
+        $overallPercentage = $totalItems > 0 ? round(($completedItems / $totalItems) * 100, 2) : 0;
+
+        return [
+            'total_items' => $totalItems,
+            'completed_items' => $completedItems,
+            'pending_items' => $totalItems - $completedItems,
+            'completion_percentage' => $overallPercentage,
+            'progress_breakdown' => [
+                'topics' => $topicsStats['completion_percentage'] ?? 0,
+                'subtopics' => $subTopicsStats['completion_percentage'] ?? 0,
+                'topic_tests' => ($topicTestsStats['total_tests'] ?? 0) > 0 ? 
+                    round((($topicTestsStats['attempted_tests'] ?? 0) / $topicTestsStats['total_tests']) * 100, 2) : 0,
+                'subtopic_tests' => ($subTopicTestsStats['total_tests'] ?? 0) > 0 ? 
+                    round((($subTopicTestsStats['attempted_tests'] ?? 0) / $subTopicTestsStats['total_tests']) * 100, 2) : 0
+            ]
+        ];
+    }
+
     /**
      * Get detailed test progress with complete attempt history
      */
@@ -1346,5 +1787,54 @@ class AssignmentController extends Controller {
         }
 
         return $strongAreas;
+    }
+
+    /**
+     * Format time remaining in HH:MM:SS format
+     */
+    private function formatTimeRemaining($endDate)
+    {
+        $now = Carbon::now();
+        $endTime = Carbon::parse($endDate);
+        
+        // If time has passed, return expired message
+        if ($now->greaterThan($endTime)) {
+            return [
+                'status' => 'expired',
+                'message' => 'Time has expired',
+                'formatted' => '00:00:00',
+                'total_seconds' => 0
+            ];
+        }
+        
+        // Calculate difference
+        $diff = $now->diff($endTime);
+        
+        // Convert to total hours, minutes, seconds
+        $totalHours = ($diff->days * 24) + $diff->h;
+        $minutes = $diff->i;
+        $seconds = $diff->s;
+        
+        // Format as HH:MM:SS
+        $formatted = sprintf('%02d:%02d:%02d', $totalHours, $minutes, $seconds);
+        
+        // Calculate total seconds for frontend countdown
+        $totalSeconds = ($diff->days * 24 * 60 * 60) + ($diff->h * 60 * 60) + ($diff->i * 60) + $diff->s;
+        
+        return [
+            'status' => 'active',
+            'message' => $totalHours > 24 ? 
+                "{$diff->days} days, {$diff->h} hours remaining" : 
+                "{$totalHours} hours, {$minutes} minutes remaining",
+            'formatted' => $formatted,
+            'total_seconds' => $totalSeconds,
+            'breakdown' => [
+                'days' => $diff->days,
+                'hours' => $diff->h,
+                'minutes' => $minutes,
+                'seconds' => $seconds,
+                'total_hours' => $totalHours
+            ]
+        ];
     }
 }

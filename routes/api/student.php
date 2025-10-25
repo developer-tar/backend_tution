@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Route;
 */
 // start course routing 
 Route::get('/current/assignment', [AssignmentController::class, 'currentAssignment']);
+Route::get('/current/assignment/stats', [AssignmentController::class, 'currentAssignmentStats']);
 
 //end course routing
 
