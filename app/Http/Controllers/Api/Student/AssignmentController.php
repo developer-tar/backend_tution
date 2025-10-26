@@ -1166,12 +1166,20 @@ class AssignmentController extends Controller {
             // Get unique subjects by ID
             $uniqueSubjects = $allSubjects->unique('id')->values();
 
-            // Format response
-            $subjects = $uniqueSubjects->map(function($subject) {
+            // Format response with completion percentage
+            $subjects = $uniqueSubjects->map(function($subject) use ($userId) {
+                $completionStats = $this->calculateSubjectCompletion($subject->id, $userId);
+                
                 return [
                     'id' => $subject->id,
                     'name' => $subject->name,
-                    'created_at' => $subject->created_at
+                    'created_at' => $subject->created_at,
+                    'completion_percentage' => $completionStats['completion_percentage'],
+                    'total_content' => $completionStats['total_content'],
+                    'completed_content' => $completionStats['completed_content'],
+                    'total_tests' => $completionStats['total_tests'],
+                    'completed_tests' => $completionStats['completed_tests'],
+                    'average_test_score' => $completionStats['average_test_score']
                 ];
             });
 
@@ -1976,5 +1984,185 @@ class AssignmentController extends Controller {
         } catch (\Exception $e) {
             return errorLog("Failed to fetch hierarchical data. Message => {$e->getMessage()}, File => {$e->getFile()}, Line No => {$e->getLine()}, Error Code => {$e->getCode()}.");
         }
+    }
+
+    /**
+     * Calculate subject completion percentage based on current date and MSR
+     */
+    private function calculateSubjectCompletion($subjectId, $userId)
+    {
+        $currentDate = Carbon::now()->format('Y-m-d');
+        
+        // Get user's courses for this subject
+        $courses = Course::whereHas(
+            'manageStudentRecord',
+            fn($q) => $q->where('buyer_id', $userId)
+        )
+        ->whereHas('subjects', fn($q) => $q->where('subjects.id', $subjectId))
+        ->with(['manageStudentRecord:id,model_id,model_type'])
+        ->get();
+
+        if ($courses->isEmpty()) {
+            return $this->getEmptyCompletionStats();
+        }
+
+        $courseIds = $courses->flatMap(fn($course) => $course->manageStudentRecord->pluck('id'))->values();
+
+        // Get assignments up to current date (past + current weeks only)
+        $assignments = CourseAssignment::with(['weeks', 'manageStudentRecord'])
+            ->whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $courseIds))
+            ->whereHas('weeks', function($q) use ($currentDate) {
+                $q->where('start_date', '<=', $currentDate);
+            })
+            ->get();
+
+        if ($assignments->isEmpty()) {
+            return $this->getEmptyCompletionStats();
+        }
+
+        $totalContent = 0;
+        $completedContent = 0;
+        $totalTests = 0;
+        $completedTests = 0;
+        $testScores = [];
+
+        foreach ($assignments as $assignment) {
+            $assignmentMSRIds = $assignment->manageStudentRecord->pluck('id');
+            
+            // Get topics from this assignment
+            $topicMSRs = ManageStudentRecord::whereIn('parent_id', $assignmentMSRIds)
+                ->where('model_type', 'App\\Models\\CourseTopic')
+                ->with('modelable.subject')
+                ->get();
+            
+            foreach ($topicMSRs as $topicMSR) {
+                $topic = $topicMSR->modelable;
+                
+                // Manual check if modelable is null
+                if (!$topic) {
+                    $topic = CourseTopic::find($topicMSR->model_id);
+                    if ($topic) {
+                        $topic->load('subject');
+                    }
+                }
+                
+                // Filter by specific subject
+                if ($topic && $topic->subject && $topic->subject->id == $subjectId) {
+                    // Count topic
+                    $totalContent++;
+                    if ($topicMSR->is_completed == 1) {
+                        $completedContent++;
+                    }
+                    
+                    // Get topic tests
+                    $topicTestMSRs = ManageStudentRecord::where('parent_id', $topicMSR->id)
+                        ->where('model_type', 'App\\Models\\CourseTest')
+                        ->get();
+                    
+                    foreach ($topicTestMSRs as $testMSR) {
+                        $totalTests++;
+                        if ($testMSR->is_completed == 1) {
+                            $completedTests++;
+                            
+                            // Get test score from UserTestAnswer
+                            $testScore = $this->getTestScore($testMSR->model_id, $userId);
+                            if ($testScore !== null) {
+                                $testScores[] = $testScore;
+                            }
+                        }
+                    }
+                    
+                    // Get subtopics from this topic
+                    $subtopicMSRs = ManageStudentRecord::where('parent_id', $topicMSR->id)
+                        ->where('model_type', 'App\\Models\\CourseSubTopic')
+                        ->get();
+                    
+                    foreach ($subtopicMSRs as $subtopicMSR) {
+                        // Count subtopic
+                        $totalContent++;
+                        if ($subtopicMSR->is_completed == 1) {
+                            $completedContent++;
+                        }
+                        
+                        // Get subtopic tests
+                        $subtopicTestMSRs = ManageStudentRecord::where('parent_id', $subtopicMSR->id)
+                            ->where('model_type', 'App\\Models\\CourseTest')
+                            ->get();
+                        
+                        foreach ($subtopicTestMSRs as $testMSR) {
+                            $totalTests++;
+                            if ($testMSR->is_completed == 1) {
+                                $completedTests++;
+                                
+                                // Get test score from UserTestAnswer
+                                $testScore = $this->getTestScore($testMSR->model_id, $userId);
+                                if ($testScore !== null) {
+                                    $testScores[] = $testScore;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Calculate completion percentage (content + tests combined)
+        $totalItems = $totalContent + $totalTests;
+        $completedItems = $completedContent + $completedTests;
+        $completionPercentage = $totalItems > 0 ? round(($completedItems / $totalItems) * 100, 2) : 0;
+        
+        // Calculate average test score
+        $averageTestScore = count($testScores) > 0 ? round(array_sum($testScores) / count($testScores), 2) : 0;
+
+        return [
+            'completion_percentage' => $completionPercentage,
+            'total_content' => $totalContent,
+            'completed_content' => $completedContent,
+            'total_tests' => $totalTests,
+            'completed_tests' => $completedTests,
+            'average_test_score' => $averageTestScore
+        ];
+    }
+
+    /**
+     * Get test score from UserTestAnswer
+     */
+    private function getTestScore($testId, $userId)
+    {
+        $testAnswers = UserTestAnswer::where('user_id', $userId)
+            ->where('test_id', $testId)
+            ->with('test')
+            ->get();
+
+        if ($testAnswers->isEmpty()) {
+            return null;
+        }
+
+        // Get the latest attempt
+        $latestAnswers = $testAnswers->groupBy('attempt_number')->last();
+        $test = $latestAnswers->first()->test;
+        
+        $correctAnswers = $latestAnswers->where('is_correct', true)->count();
+        $totalQuestions = $latestAnswers->count();
+        
+        // Calculate percentage
+        $percentage = $totalQuestions > 0 ? round(($correctAnswers / $totalQuestions) * 100, 2) : 0;
+        
+        return $percentage;
+    }
+
+    /**
+     * Get empty completion stats
+     */
+    private function getEmptyCompletionStats()
+    {
+        return [
+            'completion_percentage' => 0,
+            'total_content' => 0,
+            'completed_content' => 0,
+            'total_tests' => 0,
+            'completed_tests' => 0,
+            'average_test_score' => 0
+        ];
     }
 }

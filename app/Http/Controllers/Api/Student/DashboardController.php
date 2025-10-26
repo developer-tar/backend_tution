@@ -10,6 +10,7 @@ use App\Models\CourseTopic;
 use App\Models\CourseSubTopic;
 use App\Models\ManageStudentRecord;
 use App\Models\UserTestAnswer;
+use App\Http\Requests\SubjectDashboardRequest;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
@@ -116,26 +117,21 @@ class DashboardController extends Controller
             // Combine past + current for completed topics calculation
             $pastCurrentAssignmentIds = $pastAssignmentIds->merge($currentAssignmentIds);
 
-            // Step 5: Calculate topic completion statistics
-            $topicStats = $this->getTopicCompletionStats($pastCurrentAssignmentIds, $userId);
+            // Step 5: Get subject-wise breakdown
+            $subjectWiseData = $this->getSubjectWiseBreakdown($assignments, $userId);
 
-            // Step 6: Calculate upcoming tests (current + future weeks)
-            $upcomingCurrentAssignmentIds = $currentAssignmentIds->merge($futureAssignmentIds);
-            $upcomingTestsCount = $this->getUpcomingTestsCount($upcomingCurrentAssignmentIds);
+            // Step 6: Get current week info
+            $currentWeekInfo = $this->getCurrentWeekInfo($currentAssignments);
 
-            // Step 7: Calculate current week progress
-            $currentWeekProgress = $this->getCurrentWeekProgress($currentAssignmentIds, $userId);
-
-            // Step 8: Get weekly progress data
-            $weeklyProgress = $this->getWeeklyProgressData($assignments, $userId, $currentDate);
+            // Step 7: Calculate overall completion statistics
+            $overallStats = $this->getOverallCompletionStats($subjectWiseData);
             
             \Log::info('=== FLOW: Dashboard Data Compiled (Dashboard) ===', [
-                'topic_completion' => $topicStats,
-                'upcoming_tests_count' => $upcomingTestsCount,
-                'current_week_progress' => $currentWeekProgress,
-                'weekly_progress_count' => count($weeklyProgress),
+                'subject_wise_data_count' => count($subjectWiseData),
+                'current_week_info' => $currentWeekInfo,
+                'overall_stats' => $overallStats,
                 'summary' => [
-                    'total_weeks' => count($weeklyProgress),
+                    'total_assignments' => $assignments->count(),
                     'past_weeks' => $pastAssignments->count(),
                     'current_weeks' => $currentAssignments->count(),
                     'future_weeks' => $futureAssignments->count()
@@ -146,20 +142,12 @@ class DashboardController extends Controller
                 'success' => true,
                 'message' => 'Dashboard data fetched successfully.',
                 'data' => [
-                    'topic_completion' => [
-                        'completed_topics' => $topicStats['completed'],
-                        'remaining_topics' => $topicStats['remaining'],
-                        'total_topics' => $topicStats['total'],
-                        'completion_percentage' => $topicStats['completion_percentage']
-                    ],
-                    'upcoming_tests' => [
-                        'count' => $upcomingTestsCount,
-                        'description' => 'Tests in current and future weeks'
-                    ],
-                    'current_week_progress' => $currentWeekProgress,
-                    'weekly_progress' => $weeklyProgress,
+                    'current_week_info' => $currentWeekInfo,
+                    'subject_wise_breakdown' => $subjectWiseData,
+                    'overall_completion' => $overallStats,
                     'summary' => [
-                        'total_weeks' => count($weeklyProgress),
+                        'total_subjects' => count($subjectWiseData),
+                        'total_assignments' => $assignments->count(),
                         'past_weeks' => $pastAssignments->count(),
                         'current_weeks' => $currentAssignments->count(),
                         'future_weeks' => $futureAssignments->count()
@@ -175,134 +163,329 @@ class DashboardController extends Controller
     }
 
     /**
-     * Get topic completion statistics
+     * Get subject-specific dashboard data
      */
-    private function getTopicCompletionStats($assignmentIds, $userId)
+    public function getSubjectDashboardData(SubjectDashboardRequest $request)
     {
-        if ($assignmentIds->isEmpty()) {
+        try {
+            $userId = auth()->id();
+            $subjectId = $request->subject_id;
+            $currentDate = Carbon::now();
+            $currentDateString = $currentDate->format('Y-m-d');
+            
+            \Log::info('=== FLOW: Subject Dashboard Request (Dashboard) ===', [
+                'user_id' => $userId,
+                'subject_id' => $subjectId,
+                'current_date' => $currentDateString,
+                'timestamp' => $currentDate->toDateTimeString()
+            ]);
+
+            // Step 1: Get user's courses for this specific subject
+            $courses = Course::whereHas(
+                'manageStudentRecord',
+                fn($q) => $q->where('buyer_id', $userId)
+            )
+            ->whereHas('subjects', fn($q) => $q->where('subjects.id', $subjectId))
+            ->with(['manageStudentRecord:id,model_id,model_type'])
+            ->get();
+
+            if ($courses->isEmpty()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'No courses found for this subject.',
+                    'data' => $this->getEmptySubjectDashboardData($subjectId)
+                ], 200);
+            }
+
+            $courseIds = $courses->flatMap(fn($course) => $course->manageStudentRecord->pluck('id'))->values();
+            
+            \Log::info('=== FLOW: Subject Courses Found (Dashboard) ===', [
+                'subject_id' => $subjectId,
+                'courses_count' => $courses->count(),
+                'actual_course_ids' => $courses->pluck('id')->toArray(),
+                'course_msr_ids' => $courseIds->toArray()
+            ]);
+
+            // Step 2: Get assignments for this subject
+            $assignments = CourseAssignment::with(['weeks', 'manageStudentRecord', 'acdemicCourses.courses'])
+                ->whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $courseIds))
+                ->get();
+
+            if ($assignments->isEmpty()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'No assignments found for this subject.',
+                    'data' => $this->getEmptySubjectDashboardData($subjectId)
+                ], 200);
+            }
+
+            // Step 3: Categorize assignments by week status
+            $pastAssignments = collect();
+            $currentAssignments = collect();
+            $futureAssignments = collect();
+
+            foreach ($assignments as $assignment) {
+                if (!$assignment->weeks) continue;
+
+                $week = $assignment->weeks;
+                $weekStartDate = Carbon::parse($week->start_date);
+                $weekEndDate = Carbon::parse($week->end_date);
+
+                if ($currentDate->between($weekStartDate, $weekEndDate)) {
+                    $currentAssignments->push($assignment);
+                } elseif ($currentDate->greaterThan($weekEndDate)) {
+                    $pastAssignments->push($assignment);
+                } else {
+                    $futureAssignments->push($assignment);
+                }
+            }
+
+            // Step 4: Get subject-specific breakdown
+            $subjectData = $this->getSpecificSubjectBreakdown($assignments, $userId, $subjectId);
+
+            // Step 5: Get current week info
+            $currentWeekInfo = $this->getCurrentWeekInfo($currentAssignments);
+
+            \Log::info('=== FLOW: Subject Dashboard Compiled (Dashboard) ===', [
+                'subject_id' => $subjectId,
+                'subject_data' => $subjectData,
+                'current_week_info' => $currentWeekInfo,
+                'assignments_breakdown' => [
+                    'past' => $pastAssignments->count(),
+                    'current' => $currentAssignments->count(),
+                    'future' => $futureAssignments->count()
+                ]
+            ]);
+
+            $response = [
+                'success' => true,
+                'message' => 'Subject dashboard data fetched successfully.',
+                'data' => [
+                    'subject_info' => [
+                        'subject_id' => $subjectId,
+                        'subject_name' => $subjectData['subject_name'] ?? 'Unknown Subject'
+                    ],
+                    'current_week_info' => $currentWeekInfo,
+                    'subject_breakdown' => $subjectData,
+                    'summary' => [
+                        'total_assignments' => $assignments->count(),
+                        'past_weeks' => $pastAssignments->count(),
+                        'current_weeks' => $currentAssignments->count(),
+                        'future_weeks' => $futureAssignments->count()
+                    ]
+                ]
+            ];
+
+            return response()->json($response, 200);
+
+        } catch (\Exception $e) {
+            return errorLog("Failed to fetch subject dashboard data: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+        }
+    }
+
+    /**
+     * Get subject-wise breakdown with completion stats
+     */
+    private function getSubjectWiseBreakdown($assignments, $userId)
+    {
+        $subjectWiseData = [];
+        
+        foreach ($assignments as $assignment) {
+            $assignmentMSRIds = $assignment->manageStudentRecord->pluck('id');
+            
+            // Get topics from this assignment
+            $topicMSRs = ManageStudentRecord::whereIn('parent_id', $assignmentMSRIds)
+                ->where('model_type', 'App\\Models\\CourseTopic')
+                ->with('modelable.subject')
+                ->get();
+            
+            foreach ($topicMSRs as $topicMSR) {
+                $topic = $topicMSR->modelable;
+                
+                // Manual check if modelable is null
+                if (!$topic) {
+                    $topic = CourseTopic::find($topicMSR->model_id);
+                    if ($topic) {
+                        $topic->load('subject');
+                    }
+                }
+                
+                if ($topic && $topic->subject) {
+                    $subjectId = $topic->subject->id;
+                    $subjectName = $topic->subject->name;
+                    
+                    // Initialize subject data if not exists
+                    if (!isset($subjectWiseData[$subjectId])) {
+                        $subjectWiseData[$subjectId] = [
+                            'subject_id' => $subjectId,
+                            'subject_name' => $subjectName,
+                            'total_topics' => 0,
+                            'completed_topics' => 0,
+                            'total_subtopics' => 0,
+                            'completed_subtopics' => 0,
+                            'total_topic_tests' => 0,
+                            'completed_topic_tests' => 0,
+                            'total_subtopic_tests' => 0,
+                            'completed_subtopic_tests' => 0
+                        ];
+                    }
+                    
+                    // Count topic
+                    $subjectWiseData[$subjectId]['total_topics']++;
+                    
+                    // Check if topic is completed
+                    $topicCompleted = $topicMSR->is_completed == 1;
+                    if ($topicCompleted) {
+                        $subjectWiseData[$subjectId]['completed_topics']++;
+                    }
+                    
+                    // Get topic tests
+                    $topicTestMSRs = ManageStudentRecord::where('parent_id', $topicMSR->id)
+                        ->where('model_type', 'App\\Models\\CourseTest')
+                        ->get();
+                    
+                    $subjectWiseData[$subjectId]['total_topic_tests'] += $topicTestMSRs->count();
+                    $subjectWiseData[$subjectId]['completed_topic_tests'] += $topicTestMSRs->where('is_completed', 1)->count();
+                    
+                    // Get subtopics from this topic
+                    $subtopicMSRs = ManageStudentRecord::where('parent_id', $topicMSR->id)
+                        ->where('model_type', 'App\\Models\\CourseSubTopic')
+                        ->get();
+                    
+                    foreach ($subtopicMSRs as $subtopicMSR) {
+                        // Count subtopic
+                        $subjectWiseData[$subjectId]['total_subtopics']++;
+                        
+                        // Check if subtopic is completed
+                        if ($subtopicMSR->is_completed == 1) {
+                            $subjectWiseData[$subjectId]['completed_subtopics']++;
+                        }
+                        
+                        // Get subtopic tests
+                        $subtopicTestMSRs = ManageStudentRecord::where('parent_id', $subtopicMSR->id)
+                            ->where('model_type', 'App\\Models\\CourseTest')
+                            ->get();
+                        
+                        $subjectWiseData[$subjectId]['total_subtopic_tests'] += $subtopicTestMSRs->count();
+                        $subjectWiseData[$subjectId]['completed_subtopic_tests'] += $subtopicTestMSRs->where('is_completed', 1)->count();
+                    }
+                }
+            }
+        }
+        
+        // Calculate completion percentages
+        foreach ($subjectWiseData as &$subjectData) {
+            $totalContent = $subjectData['total_topics'] + $subjectData['total_subtopics'];
+            $completedContent = $subjectData['completed_topics'] + $subjectData['completed_subtopics'];
+            $subjectData['content_completion_percentage'] = $totalContent > 0 ? round(($completedContent / $totalContent) * 100, 2) : 0;
+            
+            $totalTests = $subjectData['total_topic_tests'] + $subjectData['total_subtopic_tests'];
+            $completedTests = $subjectData['completed_topic_tests'] + $subjectData['completed_subtopic_tests'];
+            $subjectData['test_completion_percentage'] = $totalTests > 0 ? round(($completedTests / $totalTests) * 100, 2) : 0;
+        }
+        
+        return array_values($subjectWiseData);
+    }
+
+    /**
+     * Get current week information
+     */
+    private function getCurrentWeekInfo($currentAssignments)
+    {
+        if ($currentAssignments->isEmpty()) {
             return [
-                'completed' => 0,
-                'remaining' => 0,
-                'total' => 0,
-                'completion_percentage' => 0
+                'week_number' => null,
+                'week_range' => null,
+                'start_date' => null,
+                'end_date' => null,
+                'status' => 'no_current_week',
+                'days_remaining' => 0,
+                'time_remaining' => '00:00:00',
+                'time_format' => 'time'
             ];
         }
 
-        // Get topic IDs from assignments
-        $topicIds = ManageStudentRecord::whereIn('parent_id', $assignmentIds)->pluck('id');
+        $currentAssignment = $currentAssignments->first();
+        $week = $currentAssignment->weeks;
+        
+        if (!$week) {
+            return [
+                'week_number' => null,
+                'week_range' => null,
+                'start_date' => null,
+                'end_date' => null,
+                'status' => 'no_week_data',
+                'days_remaining' => 0,
+                'time_remaining' => '00:00:00',
+                'time_format' => 'time'
+            ];
+        }
 
-        // Get all topics
-        $allTopics = CourseTopic::whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $topicIds))
-            ->with(['manageStudentRecord' => fn($q) => $q->where('buyer_id', $userId)])
-            ->get();
-
-        // Get all subtopics
-        $allSubTopics = CourseSubTopic::whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $topicIds))
-            ->with(['manageStudentRecord' => fn($q) => $q->where('buyer_id', $userId)])
-            ->get();
-
-        // Count completed topics
-        $completedTopics = $allTopics->filter(function($topic) {
-            $record = $topic->manageStudentRecord->first();
-            return $record && $record->is_completed == config('constants.completed.YES');
-        })->count();
-
-        // Count completed subtopics
-        $completedSubTopics = $allSubTopics->filter(function($subtopic) {
-            $record = $subtopic->manageStudentRecord->first();
-            return $record && $record->is_completed == config('constants.completed.YES');
-        })->count();
-
-        $totalCompleted = $completedTopics + $completedSubTopics;
-        $totalContent = $allTopics->count() + $allSubTopics->count();
-        $remaining = $totalContent - $totalCompleted;
-        $completionPercentage = $totalContent > 0 ? round(($totalCompleted / $totalContent) * 100, 2) : 0;
+        $startDate = Carbon::parse($week->start_date);
+        $endDate = Carbon::parse($week->end_date);
+        $currentDate = Carbon::now();
+        
+        // Calculate time remaining
+        $timeRemaining = $this->calculateTimeRemaining($currentDate, $endDate);
 
         return [
-            'completed' => $totalCompleted,
-            'remaining' => $remaining,
-            'total' => $totalContent,
-            'completion_percentage' => $completionPercentage
+            'week_number' => $week->week_number,
+            'week_range' => $startDate->format('d M Y') . ' to ' . $endDate->format('d M Y'),
+            'start_date' => $week->start_date,
+            'end_date' => $week->end_date,
+            'status' => 'current',
+            'days_remaining' => $timeRemaining['days_remaining'],
+            'time_remaining' => $timeRemaining['time_remaining'],
+            'time_format' => $timeRemaining['format'], // 'days' or 'time'
+            'course_name' => $currentAssignment->acdemicCourses && $currentAssignment->acdemicCourses->courses 
+                ? $currentAssignment->acdemicCourses->courses->name 
+                : 'Unknown Course'
         ];
     }
 
     /**
-     * Get upcoming tests count
+     * Get overall completion statistics
      */
-    private function getUpcomingTestsCount($assignmentIds)
+    private function getOverallCompletionStats($subjectWiseData)
     {
-        if ($assignmentIds->isEmpty()) {
-            return 0;
-        }
-
-        return CourseTest::whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $assignmentIds))
-            ->count();
-    }
-
-    /**
-     * Get current week progress based on test scores
-     */
-    private function getCurrentWeekProgress($currentAssignmentIds, $userId)
-    {
-        if ($currentAssignmentIds->isEmpty()) {
+        if (empty($subjectWiseData)) {
             return [
-                'week_number' => null,
-                'progress_percentage' => 0,
-                'tests_completed' => 0,
+                'total_subjects' => 0,
+                'total_topics' => 0,
+                'completed_topics' => 0,
+                'total_subtopics' => 0,
+                'completed_subtopics' => 0,
                 'total_tests' => 0,
-                'average_score' => 0,
-                'status' => 'no_current_week'
+                'completed_tests' => 0,
+                'overall_content_percentage' => 0,
+                'overall_test_percentage' => 0
             ];
         }
 
-        // Get current week tests
-        $currentWeekTests = CourseTest::whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $currentAssignmentIds))
-            ->get();
+        $totalTopics = array_sum(array_column($subjectWiseData, 'total_topics'));
+        $completedTopics = array_sum(array_column($subjectWiseData, 'completed_topics'));
+        $totalSubtopics = array_sum(array_column($subjectWiseData, 'total_subtopics'));
+        $completedSubtopics = array_sum(array_column($subjectWiseData, 'completed_subtopics'));
+        $totalTopicTests = array_sum(array_column($subjectWiseData, 'total_topic_tests'));
+        $completedTopicTests = array_sum(array_column($subjectWiseData, 'completed_topic_tests'));
+        $totalSubtopicTests = array_sum(array_column($subjectWiseData, 'total_subtopic_tests'));
+        $completedSubtopicTests = array_sum(array_column($subjectWiseData, 'completed_subtopic_tests'));
 
-        if ($currentWeekTests->isEmpty()) {
-            return [
-                'week_number' => null,
-                'progress_percentage' => 0,
-                'tests_completed' => 0,
-                'total_tests' => 0,
-                'average_score' => 0,
-                'status' => 'no_tests_in_current_week'
-            ];
-        }
-
-        $testIds = $currentWeekTests->pluck('id');
-
-        // Get test results for current week
-        $testAnswers = UserTestAnswer::where('user_id', $userId)
-            ->whereIn('test_id', $testIds)
-            ->with(['test'])
-            ->get();
-
-        // Calculate completed tests and scores
-        $completedTestIds = $testAnswers->pluck('test_id')->unique();
-        $testsCompleted = $completedTestIds->count();
-        $totalTests = $currentWeekTests->count();
-
-        // Calculate average score for completed tests
-        $testResults = $testAnswers->groupBy('test_id')->map(function($answers, $testId) {
-            $test = $answers->first()->test;
-            $correctAnswers = $answers->where('is_correct', true)->count();
-            $totalQuestions = $answers->count();
-            $percentage = $totalQuestions > 0 ? round(($correctAnswers / $totalQuestions) * 100, 2) : 0;
-            
-            return $percentage;
-        });
-
-        $averageScore = $testResults->count() > 0 ? round($testResults->avg(), 2) : 0;
-        $progressPercentage = $totalTests > 0 ? round(($testsCompleted / $totalTests) * 100, 2) : 0;
+        $totalContent = $totalTopics + $totalSubtopics;
+        $completedContent = $completedTopics + $completedSubtopics;
+        $totalTests = $totalTopicTests + $totalSubtopicTests;
+        $completedTests = $completedTopicTests + $completedSubtopicTests;
 
         return [
-            'week_number' => 'Current Week',
-            'progress_percentage' => $progressPercentage,
-            'tests_completed' => $testsCompleted,
+            'total_subjects' => count($subjectWiseData),
+            'total_topics' => $totalTopics,
+            'completed_topics' => $completedTopics,
+            'total_subtopics' => $totalSubtopics,
+            'completed_subtopics' => $completedSubtopics,
             'total_tests' => $totalTests,
-            'average_score' => $averageScore,
-            'status' => $testsCompleted == $totalTests ? 'completed' : 'in_progress'
+            'completed_tests' => $completedTests,
+            'overall_content_percentage' => $totalContent > 0 ? round(($completedContent / $totalContent) * 100, 2) : 0,
+            'overall_test_percentage' => $totalTests > 0 ? round(($completedTests / $totalTests) * 100, 2) : 0
         ];
     }
 
@@ -427,6 +610,186 @@ class DashboardController extends Controller
                 'current_weeks' => 0,
                 'future_weeks' => 0
             ]
+        ];
+    }
+
+    /**
+     * Get empty subject dashboard data structure
+     */
+    private function getEmptySubjectDashboardData($subjectId)
+    {
+        return [
+            'subject_info' => [
+                'subject_id' => $subjectId,
+                'subject_name' => 'Unknown Subject'
+            ],
+            'current_week_info' => [
+                'week_number' => null,
+                'week_range' => null,
+                'start_date' => null,
+                'end_date' => null,
+                'status' => 'no_current_week',
+                'days_remaining' => 0
+            ],
+            'subject_breakdown' => [
+                'subject_id' => $subjectId,
+                'subject_name' => 'Unknown Subject',
+                'total_topics' => 0,
+                'completed_topics' => 0,
+                'total_subtopics' => 0,
+                'completed_subtopics' => 0,
+                'total_topic_tests' => 0,
+                'completed_topic_tests' => 0,
+                'total_subtopic_tests' => 0,
+                'completed_subtopic_tests' => 0,
+                'content_completion_percentage' => 0,
+                'test_completion_percentage' => 0
+            ],
+            'summary' => [
+                'total_assignments' => 0,
+                'past_weeks' => 0,
+                'current_weeks' => 0,
+                'future_weeks' => 0
+            ]
+        ];
+    }
+
+    /**
+     * Get specific subject breakdown with completion stats
+     */
+    private function getSpecificSubjectBreakdown($assignments, $userId, $subjectId)
+    {
+        $subjectData = [
+            'subject_id' => $subjectId,
+            'subject_name' => 'Unknown Subject',
+            'total_topics' => 0,
+            'completed_topics' => 0,
+            'total_subtopics' => 0,
+            'completed_subtopics' => 0,
+            'total_topic_tests' => 0,
+            'completed_topic_tests' => 0,
+            'total_subtopic_tests' => 0,
+            'completed_subtopic_tests' => 0
+        ];
+        
+        foreach ($assignments as $assignment) {
+            $assignmentMSRIds = $assignment->manageStudentRecord->pluck('id');
+            
+            // Get topics from this assignment
+            $topicMSRs = ManageStudentRecord::whereIn('parent_id', $assignmentMSRIds)
+                ->where('model_type', 'App\\Models\\CourseTopic')
+                ->with('modelable.subject')
+                ->get();
+            
+            foreach ($topicMSRs as $topicMSR) {
+                $topic = $topicMSR->modelable;
+                
+                // Manual check if modelable is null
+                if (!$topic) {
+                    $topic = CourseTopic::find($topicMSR->model_id);
+                    if ($topic) {
+                        $topic->load('subject');
+                    }
+                }
+                
+                // Filter by specific subject
+                if ($topic && $topic->subject && $topic->subject->id == $subjectId) {
+                    $subjectData['subject_name'] = $topic->subject->name;
+                    
+                    // Count topic
+                    $subjectData['total_topics']++;
+                    
+                    // Check if topic is completed
+                    if ($topicMSR->is_completed == 1) {
+                        $subjectData['completed_topics']++;
+                    }
+                    
+                    // Get topic tests
+                    $topicTestMSRs = ManageStudentRecord::where('parent_id', $topicMSR->id)
+                        ->where('model_type', 'App\\Models\\CourseTest')
+                        ->get();
+                    
+                    $subjectData['total_topic_tests'] += $topicTestMSRs->count();
+                    $subjectData['completed_topic_tests'] += $topicTestMSRs->where('is_completed', 1)->count();
+                    
+                    // Get subtopics from this topic
+                    $subtopicMSRs = ManageStudentRecord::where('parent_id', $topicMSR->id)
+                        ->where('model_type', 'App\\Models\\CourseSubTopic')
+                        ->get();
+                    
+                    foreach ($subtopicMSRs as $subtopicMSR) {
+                        // Count subtopic
+                        $subjectData['total_subtopics']++;
+                        
+                        // Check if subtopic is completed
+                        if ($subtopicMSR->is_completed == 1) {
+                            $subjectData['completed_subtopics']++;
+                        }
+                        
+                        // Get subtopic tests
+                        $subtopicTestMSRs = ManageStudentRecord::where('parent_id', $subtopicMSR->id)
+                            ->where('model_type', 'App\\Models\\CourseTest')
+                            ->get();
+                        
+                        $subjectData['total_subtopic_tests'] += $subtopicTestMSRs->count();
+                        $subjectData['completed_subtopic_tests'] += $subtopicTestMSRs->where('is_completed', 1)->count();
+                    }
+                }
+            }
+        }
+        
+        // Calculate completion percentages
+        $totalContent = $subjectData['total_topics'] + $subjectData['total_subtopics'];
+        $completedContent = $subjectData['completed_topics'] + $subjectData['completed_subtopics'];
+        $subjectData['content_completion_percentage'] = $totalContent > 0 ? round(($completedContent / $totalContent) * 100, 2) : 0;
+        
+        $totalTests = $subjectData['total_topic_tests'] + $subjectData['total_subtopic_tests'];
+        $completedTests = $subjectData['completed_topic_tests'] + $subjectData['completed_subtopic_tests'];
+        $subjectData['test_completion_percentage'] = $totalTests > 0 ? round(($completedTests / $totalTests) * 100, 2) : 0;
+        
+        return $subjectData;
+    }
+
+    /**
+     * Calculate time remaining with smart formatting
+     */
+    private function calculateTimeRemaining($currentDate, $endDate)
+    {
+        // If end date has passed, return 0
+        if ($currentDate->greaterThan($endDate)) {
+            return [
+                'days_remaining' => 0,
+                'time_remaining' => '00:00:00',
+                'format' => 'time'
+            ];
+        }
+
+        // Calculate total difference
+        $totalDays = $currentDate->diffInDays($endDate, false);
+        $totalHours = $currentDate->diffInHours($endDate, false);
+        $totalMinutes = $currentDate->diffInMinutes($endDate, false);
+        $totalSeconds = $currentDate->diffInSeconds($endDate, false);
+
+        // If more than 2 days remaining, show in days
+        if ($totalDays > 2) {
+            return [
+                'days_remaining' => $totalDays,
+                'time_remaining' => $totalDays . ' days',
+                'format' => 'days'
+            ];
+        }
+
+        // If 2 days or less, show in hh:mm:ss format
+        $hours = floor($totalSeconds / 3600);
+        $minutes = floor(($totalSeconds % 3600) / 60);
+        $seconds = $totalSeconds % 60;
+
+        $timeString = sprintf('%02d:%02d:%02d', $hours, $minutes, $seconds);
+
+        return [
+            'days_remaining' => $totalDays,
+            'time_remaining' => $timeString,
+            'format' => 'time'
         ];
     }
 }

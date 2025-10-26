@@ -68,6 +68,7 @@ Route::post('weekly-performance', [WeeklyPerformanceController::class, 'getWeekl
 
 //dashboard routes
 Route::get('dashboard', [DashboardController::class, 'getDashboardData']);
+Route::post('dashboard/subject', [DashboardController::class, 'getSubjectDashboardData']);
 
 //hierarchical data routes
 Route::get('hierarchical-data', [AssignmentController::class, 'getHierarchicalData']);
