@@ -19,8 +19,8 @@ use App\Models\CourseResultUser;
 use App\Models\ErrorLog;
 use App\Models\UserTestAnswer;
 use App\Models\Week;
-use App\Models\CourseTest;
 use App\Models\CourseTopic;
+use App\Models\CourseTest;
 use App\Models\ManageStudentRecord;
 use App\Models\User;
 use Carbon\Carbon;
@@ -1128,6 +1128,68 @@ class AssignmentController extends Controller {
     }
 
     /**
+     * Get assigned subjects for the authenticated user
+     */
+    public function getAssignedSubjects()
+    {
+        try {
+            $userId = auth()->id();
+            
+            // Get user's courses with subjects
+            $courses = Course::whereHas(
+                'manageStudentRecord',
+                fn($q) => $q->where('buyer_id', $userId)
+            )
+            ->with(['subjects' => function($q) {
+                $q->select('subjects.id', 'subjects.name', 'subjects.created_at')
+                  ->orderBy('subjects.name');
+            }])
+            ->get();
+
+            if ($courses->isEmpty()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'No courses found for this user.',
+                    'data' => [
+                        'subjects' => [],
+                        'total_subjects' => 0
+                    ]
+                ], 200);
+            }
+
+            // Extract unique subjects from all courses
+            $allSubjects = collect();
+            foreach ($courses as $course) {
+                $allSubjects = $allSubjects->merge($course->subjects);
+            }
+
+            // Get unique subjects by ID
+            $uniqueSubjects = $allSubjects->unique('id')->values();
+
+            // Format response
+            $subjects = $uniqueSubjects->map(function($subject) {
+                return [
+                    'id' => $subject->id,
+                    'name' => $subject->name,
+                    'created_at' => $subject->created_at
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Assigned subjects fetched successfully.',
+                'data' => [
+                    'subjects' => $subjects,
+                    'total_subjects' => $subjects->count()
+                ]
+            ], 200);
+
+        } catch (\Exception $e) {
+            return errorLog("Failed to fetch assigned subjects. Message => {$e->getMessage()}, File => {$e->getFile()}, Line No => {$e->getLine()}, Error Code => {$e->getCode()}.");
+        }
+    }
+
+    /**
      * Get current assignment detailed statistics
      */
     public function currentAssignmentStats(CAssignmentRequest $request)
@@ -1836,5 +1898,83 @@ class AssignmentController extends Controller {
                 'total_hours' => $totalHours
             ]
         ];
+    }
+
+    public function getHierarchicalData() {
+        try {
+            $userId = Auth::id();
+
+            // Get courses assigned to the student
+            $courses = Course::whereHas(
+                'manageStudentRecord',
+                function ($q) use ($userId) {
+                    return $q->where('buyer_id', $userId);
+                }
+            )
+            ->with([
+                'subjects' => function ($query) use ($userId) {
+                    $query->with([
+                        'courseTopics' => function ($topicQuery) use ($userId) {
+                            $topicQuery->whereHas('manageStudentRecord', function ($q) use ($userId) {
+                                $q->where('buyer_id', $userId);
+                            })
+                            ->with([
+                                'subtopic' => function ($subtopicQuery) use ($userId) {
+                                    $subtopicQuery->whereHas('manageStudentRecord', function ($q) use ($userId) {
+                                        $q->where('buyer_id', $userId);
+                                    });
+                                }
+                            ]);
+                        }
+                    ]);
+                }
+            ])
+            ->get();
+
+            if ($courses->isEmpty()) {
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'No courses found for this student.',
+                    'data' => []
+                ], 404);
+            }
+
+            // Format the response data
+            $hierarchicalData = $courses->map(function ($course) {
+                return [
+                    'course' => [
+                        'id' => $course->id,
+                        'name' => $course->name
+                    ],
+                    'subjects' => $course->subjects->map(function ($subject) {
+                        return [
+                            'id' => $subject->id,
+                            'name' => $subject->name,
+                            'topics' => $subject->courseTopics->map(function ($topic) {
+                                return [
+                                    'id' => $topic->id,
+                                    'name' => $topic->name,
+                                    'subtopics' => $topic->subtopic->map(function ($subtopic) {
+                                        return [
+                                            'id' => $subtopic->id,
+                                            'name' => $subtopic->name
+                                        ];
+                                    })
+                                ];
+                            })
+                        ];
+                    })
+                ];
+            });
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Hierarchical data fetched successfully.',
+                'data' => $hierarchicalData
+            ], 200);
+
+        } catch (\Exception $e) {
+            return errorLog("Failed to fetch hierarchical data. Message => {$e->getMessage()}, File => {$e->getFile()}, Line No => {$e->getLine()}, Error Code => {$e->getCode()}.");
+        }
     }
 }

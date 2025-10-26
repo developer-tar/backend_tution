@@ -2,6 +2,11 @@
 use App\Http\Controllers\Api\Admin\Assign\MockExamController;
 use App\Http\Controllers\Api\Parent\StudentController;
 use App\Http\Controllers\Api\Student\AssignmentController;
+use App\Http\Controllers\Api\Student\TestResultController;
+use App\Http\Controllers\Api\Student\ContentController;
+use App\Http\Controllers\Api\Student\ViewedContentController;
+use App\Http\Controllers\Api\Student\WeeklyPerformanceController;
+use App\Http\Controllers\Api\Student\DashboardController;
 use Illuminate\Support\Facades\Route;
 
 
@@ -38,6 +43,9 @@ Route::post('subtopic/test/{sub_topic_test_id}/submit', [AssignmentController::c
 //fetch  subjects
 Route::get('fetch/subjects', [AssignmentController::class, 'fetchSubjects']);
 
+//get assigned subjects for user
+Route::get('assigned/subjects', [AssignmentController::class, 'getAssignedSubjects']);
+
 //mark content as completed
 Route::post('mark/content/completed', [AssignmentController::class, 'markContentCompleted']);
 
@@ -45,3 +53,21 @@ Route::post('mark/content/completed', [AssignmentController::class, 'markContent
 Route::get('my-mock-exams', [MockExamController::class, 'myMockExams']);
 Route::post('mock-exam/{mockExamId}/start', [MockExamController::class, 'startExam']);
 Route::post('mock-exam/{purchaseId}/submit', [MockExamController::class, 'submitExam']);
+
+//test results routes
+Route::get('test-results/by-weeks', [TestResultController::class, 'getTestResultsByWeeks']);
+
+//content routes
+Route::get('content/by-weeks', [ContentController::class, 'getContentByWeeks']);
+
+//viewed content routes
+Route::get('viewed-content/by-weeks', [ViewedContentController::class, 'getViewedContentByWeeks']);
+
+//weekly performance routes
+Route::post('weekly-performance', [WeeklyPerformanceController::class, 'getWeeklyPerformance']);
+
+//dashboard routes
+Route::get('dashboard', [DashboardController::class, 'getDashboardData']);
+
+//hierarchical data routes
+Route::get('hierarchical-data', [AssignmentController::class, 'getHierarchicalData']);
