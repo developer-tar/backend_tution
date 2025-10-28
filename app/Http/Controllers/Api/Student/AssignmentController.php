@@ -269,7 +269,7 @@ class AssignmentController extends Controller {
             $subjectId = $request->subject_id;
             $chooseTitle = $request->choose_title;
             $date = Carbon::now();
-
+            
             $contentType = config("constants.assignment_content.$chooseTitle");
            
             // Step 1: Get ManageStudentRecord IDs linked to user via Course
@@ -277,12 +277,13 @@ class AssignmentController extends Controller {
                 'manageStudentRecord',
                 fn($q) =>
                 $q->where('buyer_id', $userId)
+                
             )
                 ->with(['manageStudentRecord:id,model_id,model_type'])
                 ->get()
                 ->flatMap(fn($course) => $course->manageStudentRecord->pluck('id'))
                 ->values();
-
+            
             if ($courseIds->isEmpty()) {
                 return response()->json([
                     'success' => true,
@@ -292,14 +293,13 @@ class AssignmentController extends Controller {
             }
           
             // Step 2: Get Assignment IDs linked to these courses and within date range
-            $assignmentIds = CourseAssignment::with('manageStudentRecord', 'weeks')
-                ->whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $courseIds))
-                ->whereHas('weeks', fn($q) => $q->where('start_date', '<=', $date)->where('end_date', '>=', $date))
+            $assignmentIds = CourseAssignment::with(['manageStudentRecord'=> fn($q) =>
+        $q->where('buyer_id', $userId)->whereIn('parent_id', $courseIds)])
+                ->withWhereHas('weeks', fn($q) => $q->where('start_date', '<=', $date)->where('end_date', '>=', $date))
                 ->get()
                 ->flatMap(fn($assignment) => $assignment->manageStudentRecord->pluck('id'))
                 ->unique()
                 ->values();
-        
             if ($assignmentIds->isEmpty()) {
                 return response()->json([
                     'success' => true,
@@ -307,7 +307,7 @@ class AssignmentController extends Controller {
                     'data' => [],
                 ], 404);
             }
-
+           
             // Step 3: Dispatch by content type
             switch ($contentType) {
                 case CourseTopic::class:
@@ -543,8 +543,8 @@ class AssignmentController extends Controller {
     }
 
     private function fetchCourseTopics($assignmentIds, $subjectId) {
-        $topics = CourseTopic::with('manageStudentRecord')
-            ->whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $assignmentIds))
+        $topics = CourseTopic::
+            withWhereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $assignmentIds)->where('buyer_id', Auth::id()))
             ->where('subject_id', $subjectId)
             ->paginate();
 
@@ -568,6 +568,7 @@ class AssignmentController extends Controller {
     }
 
     private function fetchCourseSubTopics($assignmentIds, $subjectId) {
+        
         $topicIds = ManageStudentRecord::whereIn('parent_id', $assignmentIds)->pluck('id');
 
         if ($topicIds->isEmpty()) {
@@ -578,9 +579,9 @@ class AssignmentController extends Controller {
             ], 404);
         }
 
-        $subTopics = CourseSubTopic::with('courseTopic', 'manageStudentRecord')
-            ->whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $topicIds))
-            ->whereHas('courseTopic', fn($q) => $q->where('subject_id', $subjectId))
+        $subTopics = CourseSubTopic::
+            withWhereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $topicIds)->where('buyer_id', Auth::id()))
+            ->withWhereHas('courseTopic', fn($q) => $q->where('subject_id', $subjectId))
             ->paginate();
 
         $subTopics->getCollection()->transform(function ($item) {
@@ -618,7 +619,7 @@ class AssignmentController extends Controller {
 
         $tests = CourseTest::with('courseTopic', 'manageStudentRecord')
             ->whereHas('courseTopic', fn($q) => $q->where('subject_id', $subjectId))
-            ->whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $topicIds))
+            ->withWhereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $topicIds)->where('buyer_id', $userId))
             ->whereNull('course_sub_topic_id')
             ->paginate();
 
@@ -672,9 +673,9 @@ class AssignmentController extends Controller {
 
         $subTopicIds = ManageStudentRecord::whereIn('parent_id', $topicIds)->pluck('id');
 
-        $tests = CourseTest::with('courseSubTopic.courseTopic', 'manageStudentRecord')
+        $tests = CourseTest::with('courseSubTopic.courseTopic')
             ->whereHas('courseSubTopic.courseTopic', fn($q) => $q->where('subject_id', $subjectId))
-            ->whereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $subTopicIds))
+            ->withWhereHas('manageStudentRecord', fn($q) => $q->whereIn('parent_id', $subTopicIds)->where('buyer_id', $userId))
             ->paginate();
 
         $tests->getCollection()->transform(function ($item) use ($userId) {
