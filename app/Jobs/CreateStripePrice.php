@@ -25,7 +25,7 @@ class CreateStripePrice implements ShouldQueue
     public function __construct($courseId)
     {
         $this->courseId = $courseId;
-        $this->onQueue('stripe');
+        // $this->onQueue('stripe');
     }
 
     /**
