@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\Admin\Assign\{AssignedStudentCourseController, Assi
 
 use App\Http\Controllers\Api\Admin\Assign\{CourseController, TopicSubTopicController, TimeSlotController};
 use App\Http\Controllers\Api\Admin\Assign\MockExamController;
+use App\Http\Controllers\Api\Admin\MasterFormController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -62,3 +63,14 @@ Route::patch('timeslot', [TimeSlotController::class, 'update']);
 Route::delete('timeslot/{timeslot}', [TimeSlotController::class, 'destroy']);
 Route::get('ca_based_location/{ca}', [TimeSlotController::class, 'getLocation']); //get the location based on acdemic course
 Route::get('course/location/timeslot/{academic_course_id}/{location_id}/{weekday_id}', [TimeSlotController::class, 'getTimeSlot']); //for fetch the data in saving the data 
+
+//start master form CRUD operations
+Route::get('master-form/entities', [MasterFormController::class, 'getEntities']); // Get available entities
+Route::get('master-form/{entity}', [MasterFormController::class, 'index']); // Get all records for entity
+Route::post('master-form/{entity}', [MasterFormController::class, 'store']); // Create new record
+Route::get('master-form/{entity}/{id}', [MasterFormController::class, 'show']); // Get specific record
+Route::put('master-form/{entity}/{id}', [MasterFormController::class, 'update']); // Update record
+Route::patch('master-form/{entity}/{id}', [MasterFormController::class, 'update']); // Update record (partial)
+Route::delete('master-form/{entity}/{id}', [MasterFormController::class, 'destroy']); // Delete record
+Route::post('master-form/{entity}/{id}/restore', [MasterFormController::class, 'restore']); // Restore soft-deleted record
+//end master form CRUD operations

@@ -10,6 +10,7 @@ class Subject extends Model
     use SoftDeletes;
     protected $fillable = [
         "name",
+        "status",
     ];
 
     public function courseTopics() {

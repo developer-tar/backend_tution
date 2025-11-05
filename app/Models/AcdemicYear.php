@@ -12,8 +12,9 @@ class AcdemicYear extends Model
     protected $fillable = [
         "start_year",
         "end_year",
+        "status",
     ];
-    protected $hidden = ['start_year', 'end_year', 'deleted_at', 'created_at', 'updated_at'];
+    protected $hidden = ['start_year', 'end_year', 'created_at', 'updated_at'];
 
     protected $appends = ['start_end_year'];
     public function getStartEndYearAttribute()

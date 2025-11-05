@@ -11,6 +11,7 @@ class Week extends Model
         'week_number',
         'start_date',
         'end_date',
+        'status',
     ];
     protected $appends = ['start_end_date'];
     public function getStartEndDateAttribute()

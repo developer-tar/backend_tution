@@ -10,6 +10,7 @@ class Location extends Model {
     use SoftDeletes;
     protected $fillable = [
         "name",
+        "status",
     ];
 
     public function courses() {

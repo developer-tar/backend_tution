@@ -9,6 +9,7 @@ class WeekDay extends Model
 {
     use SoftDeletes;
     protected $fillable = [
-        'name'
+        'name',
+        'status'
     ];
 }

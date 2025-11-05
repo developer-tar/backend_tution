@@ -8,6 +8,6 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class TargetSchool extends Model
 {
     use SoftDeletes;
-    protected $fillable = ['name'];
+    protected $fillable = ['name', 'status'];
 
 }
