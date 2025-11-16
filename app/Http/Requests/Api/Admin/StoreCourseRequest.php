@@ -36,7 +36,7 @@ class StoreCourseRequest extends FormRequest
                 $billingRules["amount_for_online_{$cycle}"] = $amountValidation;
 
                 $billingRules['online_features_names'] = ['required', 'array'];
-                $billingRules["online_features_names.*"] = ['string', 'min:10', 'max:50'];
+                $billingRules["online_features_names.*"] = ['string', 'min:50', 'max:500'];
             }
 
             if (in_array('in person', $selectedModeNames)) {
