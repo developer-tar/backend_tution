@@ -103,7 +103,7 @@ class FrontendController extends Controller
 
         $withoutPagination = [];
         if ($limitDescription === false) {
-
+        
             $withoutPagination = [
                 'online_mode_features' => $course->modefeatures
                     ->pluck('online_features_names')
@@ -119,19 +119,25 @@ class FrontendController extends Controller
                     ->toArray(),
                 'start_end_date' => $startEndDate,
 
-                'price_according_to_mode' => collect($course->prices)->mapWithKeys(function ($price) {
-                    $key = $price->billingPeriod->name;
-                    $modeName = $price->mode?->name;
-                    if ($modeName == null) {
-                        return [];
-                    }
-                    return [
-                        $modeName =>
-                            [
-                                $key => ['price' => $price->currency . '' . (float) $price->amount, 'price_id' => $price->stripe_price_id]
-                            ]
-                    ];
-                }),
+                'price_according_to_mode' => collect($course->prices)
+                    ->filter(function ($price) {
+                        return $price->mode && $price->billingPeriod;
+                    })
+                    ->groupBy(function ($price) {
+                        return $price->mode->name;
+                    })
+                    ->map(function ($pricesByMode) {
+                        return $pricesByMode->mapWithKeys(function ($price) {
+                            $key = $price->billingPeriod->name;
+
+                            return [
+                                $key => [
+                                    'price' => $price->currency . '' . (float) $price->amount,
+                                    'price_id' => $price->stripe_price_id,
+                                ],
+                            ];
+                        });
+                    }),
                 'features' => $course->features?->pluck('name') ?? [],
                 'weeks_count' => $weeks->count(),
                 'locations' => $course->locations->map(function ($location) use ($course) {

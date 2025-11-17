@@ -17,7 +17,8 @@ class CourseTimeSlot extends Model {
         'end_time',
         'status',
         'seats',
-        'class_name'
+        'class_name', 
+        'remaining_seats',
     ];
     public static function storeTimeSlot(array $data): array {
         $timeSlot = self::firstOrCreate([
