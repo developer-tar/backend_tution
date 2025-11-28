@@ -35,3 +35,6 @@ Route::post('assign-course-to-student', [ParentStudentCourseController::class, '
 //merge add to cart and update cart
 
 Route::post('/checkout', [PaymentController::class, 'checkout']);
+
+// Parent subscriptions
+Route::get('subscriptions', [ParentStudentCourseController::class, 'getSubscriptions']);

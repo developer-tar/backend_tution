@@ -14,13 +14,15 @@ class UpdateMockExamRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name'              => ['required', 'string', 'max:255'],
-            'description'       => ['nullable', 'string'],
-            'category_id'       => ['required', 'integer', 'exists:mock_exam_categories,id'],
-            'format_id'            => ['required', 'string', 'exists:formats,id'],
-            'price'             => ['required', 'numeric', 'min:0'],
-            'duration_minutes'  => ['nullable', 'integer', 'min:1'],
-            'school_id'         => ['nullable', 'integer', 'exists:schools,id'],
+            'name'              => ['sometimes', 'required', 'string', 'max:255'],
+            'description'       => ['sometimes', 'nullable', 'string'],
+            'category_id'       => ['sometimes', 'required', 'integer', 'exists:mock_exam_categories,id'],
+            'format_id'         => ['sometimes', 'required', 'string', 'exists:formats,id'],
+            'price'             => ['sometimes', 'required', 'numeric', 'min:0'],
+            'currency'          => ['sometimes', 'nullable', 'string', 'max:10'],
+            'duration_minutes'  => ['sometimes', 'nullable', 'integer', 'min:1'],
+            'school_id'         => ['sometimes', 'nullable', 'integer', 'exists:schools,id'],
+            'mock_exam_image'   => ['sometimes', 'nullable', 'image', 'max:10240'],
         ];
     }
 

@@ -3,12 +3,16 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class CourseAssignment extends Model
 {
+    use SoftDeletes;
+    
     protected $fillable = [
         'week_id',
-        'acdemic_course_id'
+        'acdemic_course_id',
+        'status'
     ];
 
     public function weeks()
@@ -22,5 +26,10 @@ class CourseAssignment extends Model
     public function manageStudentRecord()
     {
         return $this->morphMany(ManageStudentRecord::class, 'model');
+    }
+    
+    public function topics()
+    {
+        return $this->hasMany(CourseTopic::class, 'course_assignment_id', 'id');
     }
 }

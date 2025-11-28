@@ -530,6 +530,76 @@ class MasterFormController extends Controller
     }
 
     /**
+     * Get all records for all entities
+     * This endpoint returns data for all supported entities in a single response
+     */
+    public function getAll(Request $request): JsonResponse
+    {
+        try {
+            $data = [];
+            $perPage = $request->integer('per_page', 15);
+            $perPage = min($perPage, 100); // Limit max per page to 100
+            
+            // Get data for each entity
+            foreach ($this->modelMappings as $entity => $modelClass) {
+                try {
+                    $model = new $modelClass();
+                    $query = $model->newQuery();
+                    
+                    // Handle soft deletes
+                    $includeTrashedParam = $request->get('include_trashed');
+                    $includeTrashed = filter_var($includeTrashedParam, FILTER_VALIDATE_BOOLEAN) || $includeTrashedParam === '1' || $includeTrashedParam === 'true';
+                    
+                    if (in_array('Illuminate\Database\Eloquent\SoftDeletes', class_uses_recursive($model))) {
+                        if ($includeTrashed) {
+                            $query = $modelClass::withTrashed();
+                        } elseif ($request->get('only_trashed')) {
+                            $query = $modelClass::onlyTrashed();
+                        }
+                    }
+                    
+                    // Apply search if provided
+                    if ($request->filled('search')) {
+                        $this->applySearch($query, $request->get('search'), $entity);
+                    }
+                    
+                    // Apply sorting
+                    $this->applySorting($query, $request);
+                    
+                    // Get paginated results
+                    $records = $query->paginate($perPage);
+                    
+                    // Add metadata for each entity
+                    $data[$entity] = [
+                        'data' => $records,
+                        'metadata' => [
+                            'total_active' => $this->getTotalActive($modelClass),
+                            'total_deleted' => $this->getTotalDeleted($modelClass),
+                            'status_counts' => $this->getStatusCounts($modelClass),
+                        ]
+                    ];
+                } catch (\Exception $e) {
+                    // If one entity fails, log it but continue with others
+                    $data[$entity] = [
+                        'error' => "Failed to retrieve {$entity}: " . $e->getMessage(),
+                        'data' => null
+                    ];
+                }
+            }
+            
+            return response()->json([
+                'success' => true,
+                'data' => $data,
+                'message' => 'All entities retrieved successfully'
+            ]);
+            
+        } catch (\Exception $e) {
+            $errorMessage = "Error retrieving all entities: " . $e->getMessage() . " in " . $e->getFile() . " at line " . $e->getLine();
+            return errorLog($errorMessage);
+        }
+    }
+
+    /**
      * Get model class for entity
      */
     private function getModelClass(string $entity): string

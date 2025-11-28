@@ -45,7 +45,7 @@ class StudentController extends Controller
                 'gender:id,name',
                 'targetSchool:id,name',
                 'assignedCourses' => function($query) {
-                    $query->select('id', 'buyer_id', 'course_id', 'status', 'is_completed', 'created_at')
+                    $query->select('id', 'buyer_id', 'course_id', 'is_completed', 'created_at')
                           ->with('course:id,name');
                 }
             ])

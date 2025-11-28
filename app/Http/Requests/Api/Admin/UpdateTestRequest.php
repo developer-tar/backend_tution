@@ -5,7 +5,7 @@ namespace App\Http\Requests\Api\Admin;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
-class StoreTestRequest extends FormRequest
+class UpdateTestRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -15,20 +15,20 @@ class StoreTestRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'topic_id'              => ['required', 'integer', 'exists:course_topics,id'],
+            'topic_id'              => ['sometimes', 'required', 'integer', 'exists:course_topics,id'],
             'subtopic_id'           => ['nullable', 'integer', 'exists:course_sub_topics,id'],
 
-            'questions'             => ['required', 'array'],
+            'questions'             => ['sometimes', 'required', 'array'],
             'questions.*'           => ['required', 'string', 'min:10', 'max:255'],
 
-            'options'               => ['required', 'array'],
+            'options'               => ['sometimes', 'required', 'array'],
             'options.*'             => ['required', 'array', 'min:2'],
             'options.*.*'           => ['required', 'string', 'min:1', 'max:255'],
 
-            'answers'               => ['required', 'array'],
+            'answers'               => ['sometimes', 'required', 'array'],
             'answers.*'             => ['required', 'string', 'min:1', 'max:255'],
 
-            'duration_in_sec'       => ['required', 'array'],
+            'duration_in_sec'       => ['sometimes', 'required', 'array'],
             'duration_in_sec.*'     => ['required', 'integer', 'min:1'],
         ];
     }
@@ -41,19 +41,22 @@ class StoreTestRequest extends FormRequest
             $answers = $this->input('answers', []);
             $durations = $this->input('duration_in_sec', []);
 
-            $count = count($questions);
+            // Only validate if questions are provided (for partial updates)
+            if (!empty($questions)) {
+                $count = count($questions);
 
-            if (
-                count($answers) !== $count ||
-                count($options) !== $count ||
-                count($durations) !== $count
-            ) {
-                $validator->errors()->add('questions', 'The number of questions, options, answers, and durations must match.');
-            }
+                if (
+                    count($answers) !== $count ||
+                    count($options) !== $count ||
+                    count($durations) !== $count
+                ) {
+                    $validator->errors()->add('questions', 'The number of questions, options, answers, and durations must match.');
+                }
 
-            foreach ($answers as $index => $answer) {
-                if (!isset($options[$index]) || !in_array($answer, $options[$index], true)) {
-                    $validator->errors()->add("answers.$index", "The answer must match one of the options for question #" . ($index + 1) . ".");
+                foreach ($answers as $index => $answer) {
+                    if (!isset($options[$index]) || !in_array($answer, $options[$index], true)) {
+                        $validator->errors()->add("answers.$index", "The answer must match one of the options for question #" . ($index + 1) . ".");
+                    }
                 }
             }
         });
@@ -96,3 +99,4 @@ class StoreTestRequest extends FormRequest
         ];
     }
 }
+

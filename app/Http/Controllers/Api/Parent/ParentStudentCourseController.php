@@ -6,14 +6,19 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\Parent\AssignCourseToStudentRequest;
 use App\Http\Requests\Api\Parent\FetchParentStudentsRequest;
 use App\Services\ParentCourseService;
+use App\Services\SubscriptionService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class ParentStudentCourseController extends Controller
 {
     protected $parentCourseService;
+    protected $subscriptionService;
 
-    public function __construct(ParentCourseService $parentCourseService)
+    public function __construct(ParentCourseService $parentCourseService, SubscriptionService $subscriptionService)
     {
         $this->parentCourseService = $parentCourseService;
+        $this->subscriptionService = $subscriptionService;
     }
 
     /**
@@ -74,6 +79,29 @@ class ParentStudentCourseController extends Controller
 
         } catch (\Exception $e) {
             return errorLog("Failed to assign course to student(s). Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
+        }
+    }
+
+    /**
+     * Get parent subscriptions.
+     * 
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getSubscriptions()
+    {
+        try {
+            $parentId = auth()->user()->id;
+            $subscriptions = $this->subscriptionService->getSubscriptionsForParent($parentId);
+
+            return response()->json([
+                'success' => true,
+                'data' => $subscriptions,
+                'message' => 'Subscriptions fetched successfully.',
+            ], 200);
+
+        } catch (\Exception $e) {
+            Log::error("Failed to fetch subscriptions. Message => {$e->getMessage()}");
+            return sendError('error', ['error' => 'An error occurred while fetching subscriptions.'], 500);
         }
     }
 }

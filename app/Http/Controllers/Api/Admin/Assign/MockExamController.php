@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Api\Admin\Assign;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\Admin\StoreMockExamRequest;
 use App\Http\Requests\Api\Admin\UpdateMockExamRequest;
+use App\Http\Requests\Api\Admin\ToggleMockExamStatusRequest;
 use App\Jobs\MockExamPrice;
 use App\Jobs\UploadMockExamImageJob;
+use App\Jobs\UpdateMockExamStripePrice;
 use App\Models\MockExam;
 use App\Models\MockExamAnswer;
 use App\Models\MockExamCategory;
@@ -20,16 +22,13 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+
 class MockExamController extends Controller
 {
-    /**
-     * Get all categories with hierarchy (for dropdown)
-     * GET /api/admin/mock-exam/categories
-     */
     public function getCategories(Request $request)
     {
         try {
-            $parentId = $request->input('parent_id'); // null for root categories
+            $parentId = $request->input('parent_id');
 
             $categories = MockExamCategory::with('children')
                 ->when($parentId !== null, fn($q) => $q->where('parent_id', $parentId), fn($q) => $q->whereNull('parent_id'))
@@ -50,10 +49,6 @@ class MockExamController extends Controller
         }
     }
 
-    /**
-     * Get category tree (full hierarchy)
-     * GET /api/admin/mock-exam/category-tree
-     */
     public function getCategoryTree()
     {
         try {
@@ -68,10 +63,6 @@ class MockExamController extends Controller
         }
     }
 
-    /**
-     * Create category
-     * POST /api/admin/mock-exam/category
-     */
     public function storeCategory(Request $request)
     {
         $request->validate([
@@ -96,10 +87,48 @@ class MockExamController extends Controller
         }
     }
 
-    /**
-     * Get all mock exams with filters
-     * GET /api/admin/mock-exam
-     */
+    public function updateCategory(Request $request, $id)
+    {
+        $request->validate([
+            'name' => 'sometimes|required|string|max:255',
+            'parent_id' => 'nullable|exists:mock_exam_categories,id',
+        ]);
+
+        try {
+            $category = MockExamCategory::findOrFail($id);
+            if ($request->has('parent_id') && $request->parent_id == $category->id) {
+                return sendError('Category cannot be its own parent', [], 422);
+            }
+            
+            $category->update($request->only(['name', 'parent_id']));
+            
+            return sendResponse($category, 'Category updated successfully');
+        } catch (Exception $e) {
+            return errorLog("Failed to update category: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+        }
+    }
+
+    public function deleteCategory($id)
+    {
+        try {
+            $category = MockExamCategory::findOrFail($id);
+            
+            if ($category->children()->exists()) {
+                return sendError('Cannot delete category with sub-categories', [], 400);
+            }
+            
+            if ($category->mockExams()->exists()) {
+                return sendError('Cannot delete category with associated mock exams', [], 400);
+            }
+            
+            $category->delete();
+            
+            return sendResponse(null, 'Category deleted successfully');
+        } catch (Exception $e) {
+            return errorLog("Failed to delete category: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+        }
+    }
+
     public function index(Request $request)
     {
         try {
@@ -126,11 +155,13 @@ class MockExamController extends Controller
                         'category' => $exam->category?->name,
                         'format' => $exam->format->name,
                         'price' =>  $exam->price,
+                        'currency' => $exam->currency,
                         'duration_minutes' => $exam->duration_minutes,
                         'total_marks' => $exam->total_marks,
                         'school' => $exam->school?->name,
                         'questions_count' => $exam->questions->count(),
                         'status' => $exam->status,
+                        'image' => $exam->getFirstMediaUrl('mock_exam_image') ?: config('constants.dummy_image'),
                     ];
                 });
 
@@ -140,10 +171,6 @@ class MockExamController extends Controller
         }
     }
 
-    /**
-     * Get single mock exam with questions
-     * GET /api/admin/mock-exam/{id}
-     */
     public function show($id)
     {
         try {
@@ -163,6 +190,7 @@ class MockExamController extends Controller
                 'description' => $mockExam->description,
                 'category_id' => $mockExam->category_id,
                 'category_name' => $mockExam->category?->name,
+                'format_id' => $mockExam->format_id,
                 'format' => $mockExam->format->name,
                 'price' => $mockExam->price,
                 'currency' => $mockExam->currency,
@@ -170,6 +198,7 @@ class MockExamController extends Controller
                 'total_marks' => $mockExam->total_marks,
                 'school_id' => $mockExam->school_id,
                 'school_name' => $mockExam->school?->name,
+                'image' => $mockExam->getFirstMediaUrl('mock_exam_image') ?: config('constants.dummy_image'),
                 'questions' => $mockExam->questions->map(function ($question) {
                     $correctOption = $question->options->first(fn($opt) => $opt->answer !== null);
                     return [
@@ -194,16 +223,11 @@ class MockExamController extends Controller
         }
     }
 
-    /**
-     * Create mock exam with questions
-     * POST /api/admin/mock-exam
-     */
     public function store(StoreMockExamRequest $request)
     {
         try {
             DB::beginTransaction();
 
-            // Calculate total marks
             $marks = $request->input('marks', []);
             $totalMarks = !empty($marks) ? array_sum($marks) : count($request->questions);
          
@@ -235,7 +259,6 @@ class MockExamController extends Controller
                         'option_text' => $option,
                     ]);
 
-                    // Mark correct answer
                     if ($optionObj->option_text == $request->input('answers')[$key]) {
                         MockExamAnswer::firstOrCreate([
                             'mock_exam_option_id' => $optionObj->id,
@@ -243,9 +266,28 @@ class MockExamController extends Controller
                     }
                 }
             }
-            // if ($request->hasFile('mock_exam_image')) {
-            //     UploadMockExamImageJob::dispatch($mockExam, $request->file('mock_exam_image'));
-            // }    
+
+            if ($request->hasFile('mock_exam_image')) {
+                try {
+                    Log::info("Image file detected in create request, processing upload");
+                    $file = $request->file('mock_exam_image');
+                    $tempPath = $file->store('temp/mock_exam_images', 'local');
+                    
+                    if ($tempPath) {
+                        Log::info("Temporary file stored", ['temp_path' => $tempPath]);
+                        UploadMockExamImageJob::dispatch(
+                            $mockExam->id,
+                            $tempPath,
+                            $file->getClientOriginalName(),
+                            $file->getMimeType()
+                        );
+                        Log::info("UploadMockExamImageJob dispatched for mock exam ID: {$mockExam->id}");
+                    }
+                } catch (Exception $e) {
+                    Log::error("Failed to process image upload", ['error' => $e->getMessage()]);
+                }
+            }
+
             MockExamPrice::dispatch($mockExam->id);
             DB::commit();
 
@@ -256,28 +298,65 @@ class MockExamController extends Controller
         }
     }
 
-    /**
-     * Update mock exam
-     * PUT /api/admin/mock-exam/{id}
-     */
     public function update(UpdateMockExamRequest $request, $id)
     {
         try {
+            Log::info("=== MOCK EXAM UPDATE STARTED ===", [
+                'mock_exam_id' => $id,
+                'method' => $request->method(),
+                'has_file' => $request->hasFile('mock_exam_image'),
+                'content_type' => $request->header('Content-Type')
+            ]);
+
             DB::beginTransaction();
 
             $mockExam = MockExam::findOrFail($id);
+            $oldPrice = $mockExam->price;
 
-            $mockExam->update([
-                'name' => $request->name,
-                'description' => $request->description,
-                'category_id' => $request->category_id,
-                'format_id' => $request->format_id,
-                'price' => $request->price,
-                'duration_minutes' => $request->duration_minutes,
-                'school_id' => $request->school_id,
-            ]);
+            $updateData = [];
+            if ($request->has('name')) $updateData['name'] = $request->name;
+            if ($request->has('description')) $updateData['description'] = $request->description;
+            if ($request->has('category_id')) $updateData['category_id'] = $request->category_id;
+            if ($request->has('format_id')) $updateData['format_id'] = $request->format_id;
+            if ($request->has('price')) $updateData['price'] = $request->price;
+            if ($request->has('currency')) $updateData['currency'] = $request->currency;
+            if ($request->has('duration_minutes')) $updateData['duration_minutes'] = $request->duration_minutes;
+            if ($request->has('school_id')) $updateData['school_id'] = $request->school_id;
+
+            if (!empty($updateData)) {
+                $mockExam->update($updateData);
+            }
+
+            if ($request->hasFile('mock_exam_image')) {
+                try {
+                    Log::info("Image file detected in update request, processing upload");
+                    
+                    $mockExam->clearMediaCollection('mock_exam_image');
+                    
+                    $file = $request->file('mock_exam_image');
+                    $tempPath = $file->store('temp/mock_exam_images', 'local');
+                    
+                    if ($tempPath) {
+                        Log::info("Temporary file stored", ['temp_path' => $tempPath]);
+                        UploadMockExamImageJob::dispatch(
+                            $mockExam->id,
+                            $tempPath,
+                            $file->getClientOriginalName(),
+                            $file->getMimeType()
+                        );
+                        Log::info("UploadMockExamImageJob dispatched for mock exam ID: {$mockExam->id}");
+                    }
+                } catch (Exception $e) {
+                    Log::error("Failed to process image upload in update", ['error' => $e->getMessage()]);
+                }
+            }
 
             DB::commit();
+
+            if ($request->has('price') && abs($oldPrice - $request->price) > 0.01) {
+                Log::info("Price changed, dispatching UpdateMockExamStripePrice job");
+                UpdateMockExamStripePrice::dispatch($mockExam->id);
+            }
 
             return sendResponse($mockExam, 'Mock exam updated successfully');
         } catch (Exception $e) {
@@ -286,14 +365,15 @@ class MockExamController extends Controller
         }
     }
 
-    /**
-     * Delete mock exam
-     * DELETE /api/admin/mock-exam/{id}
-     */
     public function destroy($id)
     {
         try {
             $mockExam = MockExam::findOrFail($id);
+            
+            if (MockExamPurchase::where('mock_exam_id', $id)->exists()) {
+                return sendError('Cannot delete mock exam. This mock exam has been purchased by one or more parents or students.', [], 400);
+            }
+
             $mockExam->delete();
 
             return sendResponse(null, 'Mock exam deleted successfully');
@@ -302,10 +382,27 @@ class MockExamController extends Controller
         }
     }
 
-    /**
-     * Get user's purchased mock exams
-     * GET /api/student/my-mock-exams
-     */
+    public function toggleStatus(ToggleMockExamStatusRequest $request, $id)
+    {
+        try {
+            $mockExam = MockExam::findOrFail($id);
+            
+            $status = $request->action === 'activate' 
+                ? config('constants.statuses.APPROVED', 2) 
+                : config('constants.statuses.REJECTED', 3);
+                
+            $mockExam->update(['status' => $status]);
+            
+            return sendResponse([
+                'id' => $mockExam->id,
+                'status' => $status,
+                'status_label' => $request->action === 'activate' ? 'approved' : 'rejected'
+            ], 'Mock exam status updated successfully');
+        } catch (Exception $e) {
+            return errorLog("Failed to update mock exam status: {$e->getMessage()}");
+        }
+    }
+
     public function myMockExams()
     {
         try {
@@ -336,16 +433,11 @@ class MockExamController extends Controller
         }
     }
 
-    /**
-     * Start mock exam attempt
-     * POST /api/student/mock-exam/{id}/start
-     */
     public function startExam($mockExamId)
     {
         try {
             $userId = Auth::id();
 
-            // Check if already purchased
             $purchase = MockExamPurchase::where('user_id', $userId)
                 ->where('mock_exam_id', $mockExamId)
                 ->first();
@@ -369,10 +461,6 @@ class MockExamController extends Controller
         }
     }
 
-    /**
-     * Submit mock exam answers
-     * POST /api/student/mock-exam/{purchaseId}/submit
-     */
     public function submitExam(Request $request, $purchaseId)
     {
         $request->validate([

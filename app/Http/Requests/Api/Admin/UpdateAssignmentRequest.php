@@ -6,7 +6,7 @@ use App\Models\CourseAssignment;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Contracts\Validation\Validator;
 
-class StoreAssigmentRequest extends FormRequest
+class UpdateAssignmentRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -15,10 +15,12 @@ class StoreAssigmentRequest extends FormRequest
 
     public function rules(): array
     {
+        $assignmentId = $this->route('assignment');
+        
         return [
-            'week_ids' => ['required', 'array'],
+            'week_ids' => ['sometimes', 'required', 'array'],
             'week_ids.*' => ['integer', 'exists:weeks,id'],
-            'acdemic_course_id' => ['required', 'integer', 'exists:acdemic_course,id'],
+            'acdemic_course_id' => ['sometimes', 'required', 'integer', 'exists:acdemic_course,id'],
         ];
     }
 
@@ -38,9 +40,25 @@ class StoreAssigmentRequest extends FormRequest
     protected function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator) {
-            if ($this->filled('week_ids') && $this->filled('acdemic_course_id')) {
-                $existing = CourseAssignment::where('acdemic_course_id', $this->acdemic_course_id)
-                    ->whereIn('week_id', $this->week_ids)
+            $assignmentId = $this->route('assignment');
+            
+            // Check if assignment exists
+            $assignment = CourseAssignment::find($assignmentId);
+            
+            if (!$assignment) {
+                $validator->errors()->add('assignment', 'The assignment does not exist.');
+                return;
+            }
+
+            // Get academic course ID from request or existing assignment
+            $academicCourseId = $this->input('acdemic_course_id', $assignment->acdemic_course_id);
+            $weekIds = $this->input('week_ids', []);
+
+            if (!empty($weekIds) && $academicCourseId) {
+                // Check for duplicates excluding current assignment
+                $existing = CourseAssignment::where('acdemic_course_id', $academicCourseId)
+                    ->whereIn('week_id', $weekIds)
+                    ->where('id', '!=', $assignmentId)
                     ->pluck('week_id')
                     ->toArray();
 
@@ -54,3 +72,4 @@ class StoreAssigmentRequest extends FormRequest
         });
     }
 }
+

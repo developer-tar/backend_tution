@@ -104,7 +104,7 @@ class StoreMockExamRequest extends FormRequest
             'marks.*.integer' => 'Marks must be a number.',
             'marks.*.min' => 'Marks must be at least 1.',
             'mock_exam_image.image' => 'The uploaded file must be an image.',
-            'mock_exam_image.max' => 'Course image size must not exceed 10MB.',
+            'mock_exam_image.max' => 'Mock exam image size must not exceed 10MB.',
         ];
     }
 }

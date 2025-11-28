@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api\Admin\Assign;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\Admin\FetchTopicSubtopicList;
 use App\Http\Requests\Api\Admin\StoreTopicSubTopicRequest;
+use App\Http\Requests\Api\Admin\UpdateTopicRequest;
+use App\Http\Requests\Api\Admin\UpdateSubtopicRequest;
 use App\Jobs\UploadSingleContentFileJob;
 use App\Models\CourseSubTopic;
 use App\Models\CourseTopic;
@@ -207,6 +209,330 @@ class TopicSubTopicController extends Controller
             $response = [
                 'success' => false,
                 'message' => "An error occurred during store",
+            ];
+            return response()->json($response, 500);
+        }
+    }
+
+    /**
+     * Display the specified topic.
+     *
+     * @param  int  $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function show($id)
+    {
+        try {
+            $topic = CourseTopic::with([
+                'courseAssignment:id,week_id,acdemic_course_id',
+                'courseAssignment.weeks:id,week_number,start_date,end_date',
+                'courseAssignment.acdemicCourses:id,course_id,acdemic_id',
+                'courseAssignment.acdemicCourses.courses:id,name',
+                'subject:id,name',
+                'subtopic:id,course_topic_id,name',
+            ])->findOrFail($id);
+
+            $data = [
+                'id' => $topic->id,
+                'course_assigment_id' => $topic->course_assignment_id,
+                'subject_id' => $topic->subject_id,
+                'topic_name' => $topic->name,
+                'content_upload' => $topic->getMedia('content_upload')->map(function ($media) {
+                    return [
+                        'id' => $media->id,
+                        'url' => $media->getUrl(),
+                        'name' => $media->name,
+                        'file_name' => $media->file_name,
+                        'mime_type' => $media->mime_type,
+                        'size' => $media->size,
+                    ];
+                }),
+                'subtopics' => $topic->subtopic->map(function ($subtopic) {
+                    return [
+                        'id' => $subtopic->id,
+                        'name' => $subtopic->name,
+                    ];
+                }),
+                'assignment_details' => [
+                    'week_number' => $topic->courseAssignment->weeks->week_number ?? null,
+                    'week_name' => $topic->courseAssignment->weeks->start_end_date ?? null,
+                    'course_name' => $topic->courseAssignment->acdemicCourses->courses->name ?? null,
+                ],
+            ];
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Topic fetched successfully.',
+                'data' => $data,
+            ], 200);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return sendError('error', ['error' => 'Topic not found.'], 404);
+        } catch (\Exception $e) {
+            Log::error("Failed to fetch topic. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
+            return sendError('error', ['error' => 'An error occurred while fetching topic.'], 500);
+        }
+    }
+
+    /**
+     * Update the specified topic.
+     *
+     * @param  UpdateTopicRequest  $request
+     * @param  int  $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function update(UpdateTopicRequest $request, $id)
+    {
+        try {
+            // First, store files outside transaction to ensure they persist
+            $filePaths = [];
+            if ($request->hasFile('content_upload')) {
+                // Create temp directory if not exists
+                $tempDir = storage_path('app/temp');
+                if (!is_dir($tempDir)) {
+                    mkdir($tempDir, 0755, true);
+                }
+
+                foreach ($request->file('content_upload') as $file) {
+                    // Manual file copy to ensure it works
+                    $tempFileName = 'temp_' . uniqid() . '.' . $file->getClientOriginalExtension();
+                    $tempPath = $tempDir . '/' . $tempFileName;
+                    
+                    // Copy file manually
+                    if (copy($file->getRealPath(), $tempPath)) {
+                        $filePaths[] = [
+                            'temp_path' => $tempPath,
+                            'original_name' => $file->getClientOriginalName(),
+                            'extension' => $file->getClientOriginalExtension(),
+                            'mime_type' => $file->getMimeType()
+                        ];
+                        \Log::info("File stored successfully: " . $tempPath);
+                    } else {
+                        \Log::error("Failed to store file: " . $file->getClientOriginalName());
+                    }
+                }
+            }
+
+            DB::beginTransaction();
+
+            $topic = CourseTopic::findOrFail($id);
+
+            // Update basic fields
+            if ($request->has('topic_name')) {
+                $topic->name = $request->topic_name;
+            }
+            if ($request->has('course_assigment_id')) {
+                $topic->course_assignment_id = $request->course_assigment_id;
+            }
+            if ($request->has('subject_id')) {
+                $topic->subject_id = $request->subject_id;
+            }
+
+            $topic->save();
+
+            DB::commit();
+
+            // Handle content upload after successful DB commit
+            if (!empty($filePaths)) {
+                // Clear old media collection if new files are provided
+                $topic->clearMediaCollection('content_upload');
+                
+                // Dispatch job with stored file paths
+                UploadSingleContentFileJob::dispatch(
+                    get_class($topic),
+                    $topic->id,
+                    $filePaths
+                );
+            }
+
+            $response = [
+                'success' => true,
+                'message' => 'Topic updated successfully.',
+            ];
+            return response()->json($response, 200);
+
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            DB::rollBack();
+            // Clean up temp files on error
+            if (!empty($filePaths)) {
+                foreach ($filePaths as $fileData) {
+                    if (file_exists($fileData['temp_path'])) {
+                        unlink($fileData['temp_path']);
+                    }
+                }
+            }
+            return sendError('error', ['error' => 'Topic not found.'], 404);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            
+            // Clean up temp files on error
+            if (!empty($filePaths)) {
+                foreach ($filePaths as $fileData) {
+                    if (file_exists($fileData['temp_path'])) {
+                        unlink($fileData['temp_path']);
+                    }
+                }
+            }
+            
+            Log::error("Failed to update topic. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
+            $response = [
+                'success' => false,
+                'message' => "An error occurred during update",
+            ];
+            return response()->json($response, 500);
+        }
+    }
+
+    /**
+     * Display the specified subtopic.
+     *
+     * @param  int  $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function showSubtopic($id)
+    {
+        try {
+            $subtopic = CourseSubTopic::with([
+                'courseTopic:id,name,course_assignment_id,subject_id',
+                'courseTopic.courseAssignment:id,week_id,acdemic_course_id',
+                'courseTopic.courseAssignment.weeks:id,week_number,start_date,end_date',
+                'courseTopic.subject:id,name',
+            ])->findOrFail($id);
+
+            $data = [
+                'id' => $subtopic->id,
+                'course_topic_id' => $subtopic->course_topic_id,
+                'subtopic_name' => $subtopic->name,
+                'content_upload' => $subtopic->getMedia('content_upload')->map(function ($media) {
+                    return [
+                        'id' => $media->id,
+                        'url' => $media->getUrl(),
+                        'name' => $media->name,
+                        'file_name' => $media->file_name,
+                        'mime_type' => $media->mime_type,
+                        'size' => $media->size,
+                    ];
+                }),
+                'topic_details' => [
+                    'id' => $subtopic->courseTopic->id ?? null,
+                    'name' => $subtopic->courseTopic->name ?? null,
+                    'subject_name' => $subtopic->courseTopic->subject->name ?? null,
+                ],
+            ];
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Subtopic fetched successfully.',
+                'data' => $data,
+            ], 200);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return sendError('error', ['error' => 'Subtopic not found.'], 404);
+        } catch (\Exception $e) {
+            Log::error("Failed to fetch subtopic. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
+            return sendError('error', ['error' => 'An error occurred while fetching subtopic.'], 500);
+        }
+    }
+
+    /**
+     * Update the specified subtopic.
+     *
+     * @param  UpdateSubtopicRequest  $request
+     * @param  int  $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function updateSubtopic(UpdateSubtopicRequest $request, $id)
+    {
+        try {
+            // First, store files outside transaction to ensure they persist
+            $filePaths = [];
+            if ($request->hasFile('content_upload')) {
+                // Create temp directory if not exists
+                $tempDir = storage_path('app/temp');
+                if (!is_dir($tempDir)) {
+                    mkdir($tempDir, 0755, true);
+                }
+
+                foreach ($request->file('content_upload') as $file) {
+                    // Manual file copy to ensure it works
+                    $tempFileName = 'temp_' . uniqid() . '.' . $file->getClientOriginalExtension();
+                    $tempPath = $tempDir . '/' . $tempFileName;
+                    
+                    // Copy file manually
+                    if (copy($file->getRealPath(), $tempPath)) {
+                        $filePaths[] = [
+                            'temp_path' => $tempPath,
+                            'original_name' => $file->getClientOriginalName(),
+                            'extension' => $file->getClientOriginalExtension(),
+                            'mime_type' => $file->getMimeType()
+                        ];
+                        \Log::info("File stored successfully: " . $tempPath);
+                    } else {
+                        \Log::error("Failed to store file: " . $file->getClientOriginalName());
+                    }
+                }
+            }
+
+            DB::beginTransaction();
+
+            $subtopic = CourseSubTopic::findOrFail($id);
+
+            // Update basic fields
+            if ($request->has('subtopic_name')) {
+                $subtopic->name = $request->subtopic_name;
+            }
+            if ($request->has('course_topic_id')) {
+                $subtopic->course_topic_id = $request->course_topic_id;
+            }
+
+            $subtopic->save();
+
+            DB::commit();
+
+            // Handle content upload after successful DB commit
+            if (!empty($filePaths)) {
+                // Clear old media collection if new files are provided
+                $subtopic->clearMediaCollection('content_upload');
+                
+                // Dispatch job with stored file paths
+                UploadSingleContentFileJob::dispatch(
+                    get_class($subtopic),
+                    $subtopic->id,
+                    $filePaths
+                );
+            }
+
+            $response = [
+                'success' => true,
+                'message' => 'Subtopic updated successfully.',
+            ];
+            return response()->json($response, 200);
+
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            DB::rollBack();
+            // Clean up temp files on error
+            if (!empty($filePaths)) {
+                foreach ($filePaths as $fileData) {
+                    if (file_exists($fileData['temp_path'])) {
+                        unlink($fileData['temp_path']);
+                    }
+                }
+            }
+            return sendError('error', ['error' => 'Subtopic not found.'], 404);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            
+            // Clean up temp files on error
+            if (!empty($filePaths)) {
+                foreach ($filePaths as $fileData) {
+                    if (file_exists($fileData['temp_path'])) {
+                        unlink($fileData['temp_path']);
+                    }
+                }
+            }
+            
+            Log::error("Failed to update subtopic. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
+            $response = [
+                'success' => false,
+                'message' => "An error occurred during update",
             ];
             return response()->json($response, 500);
         }
