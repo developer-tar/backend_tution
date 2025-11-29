@@ -2,13 +2,17 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Cart;
 use App\Models\MockExam;
 use App\Models\MockExamPurchase;
 use App\Models\User;
 use Exception;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Laravel\Cashier\Http\Controllers\WebhookController;
+use Stripe\Stripe;
+use Stripe\Checkout\Session as StripeSession;
 
 class StripeController extends WebhookController
 {
@@ -45,7 +49,17 @@ class StripeController extends WebhookController
             }
 
             if ($session['mode'] === 'payment') {
-                return $this->handleMockExamPurchase($session);
+                $result = $this->handleMockExamPurchase($session);
+                // Clear cart items after successful purchase
+                $this->clearCartAfterPurchase($session);
+                return $result;
+            }
+
+            if ($session['mode'] === 'subscription') {
+                $result = $this->handleSubscriptionPurchase($session);
+                // Clear cart items after successful subscription
+                $this->clearCartAfterPurchase($session);
+                return $result;
             }
 
             Log::warning('Unknown session mode', ['mode' => $session['mode']]);
@@ -150,6 +164,7 @@ class StripeController extends WebhookController
                 'status' => $purchase->payment_status
             ]);
 
+            // Cart clearing is handled in handleCheckoutSessionCompleted after purchase creation
             return $this->successMethod();
 
         } catch (Exception $e) {
@@ -193,6 +208,241 @@ class StripeController extends WebhookController
         } catch (Exception $e) {
             Log::error('Failed payment handler error: ' . $e->getMessage());
             return $this->successMethod();
+        }
+    }
+
+    /**
+     * Handle subscription purchase
+     */
+    protected function handleSubscriptionPurchase(array $session)
+    {
+        try {
+            // Subscription handling is typically done by Cashier automatically
+            // This method is here for any additional logic if needed
+            Log::info('Subscription purchase completed', [
+                'session_id' => $session['id'],
+                'subscription_id' => $session['subscription'] ?? null,
+                'customer_id' => $session['customer'] ?? null
+            ]);
+
+            return $this->successMethod();
+
+        } catch (Exception $e) {
+            Log::error('Subscription purchase error: ' . $e->getMessage(), [
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'session' => $session
+            ]);
+            return $this->successMethod();
+        }
+    }
+
+    /**
+     * Extract price IDs from checkout session
+     */
+    protected function extractPriceIdsFromSession(array $session): array
+    {
+        $priceIds = [];
+
+        try {
+            if ($session['mode'] === 'payment') {
+                // For one-time payments, extract from line_items
+                if (isset($session['line_items']) && is_array($session['line_items'])) {
+                    // If line_items is already expanded
+                    if (isset($session['line_items']['data'])) {
+                        foreach ($session['line_items']['data'] as $item) {
+                            if (isset($item['price']['id'])) {
+                                $priceIds[] = $item['price']['id'];
+                            }
+                        }
+                    }
+                } else {
+                    // If line_items is not expanded, retrieve from Stripe API
+                    try {
+                        Stripe::setApiKey(config('constants.stripe_secret'));
+                        $stripeSession = StripeSession::retrieve($session['id'], [
+                            'expand' => ['line_items.data.price']
+                        ]);
+
+                        if (isset($stripeSession->line_items->data)) {
+                            foreach ($stripeSession->line_items->data as $item) {
+                                if (isset($item->price->id)) {
+                                    $priceIds[] = $item->price->id;
+                                }
+                            }
+                        }
+                    } catch (Exception $e) {
+                        Log::warning('Failed to retrieve line items from Stripe API', [
+                            'session_id' => $session['id'],
+                            'error' => $e->getMessage()
+                        ]);
+                    }
+                }
+            } elseif ($session['mode'] === 'subscription') {
+                // For subscriptions, try to extract from line_items first (most reliable)
+                if (isset($session['line_items']) && is_array($session['line_items'])) {
+                    if (isset($session['line_items']['data'])) {
+                        foreach ($session['line_items']['data'] as $item) {
+                            if (isset($item['price']['id'])) {
+                                $priceIds[] = $item['price']['id'];
+                            }
+                        }
+                    }
+                } else {
+                    // If line_items not expanded, try to retrieve from Stripe API
+                    try {
+                        Stripe::setApiKey(config('constants.stripe_secret'));
+                        $stripeSession = StripeSession::retrieve($session['id'], [
+                            'expand' => ['line_items.data.price']
+                        ]);
+
+                        if (isset($stripeSession->line_items->data)) {
+                            foreach ($stripeSession->line_items->data as $item) {
+                                if (isset($item->price->id)) {
+                                    $priceIds[] = $item->price->id;
+                                }
+                            }
+                        }
+                    } catch (Exception $e) {
+                        Log::warning('Failed to retrieve line items from Stripe API for subscription', [
+                            'session_id' => $session['id'],
+                            'error' => $e->getMessage()
+                        ]);
+                    }
+                }
+
+                // Fallback: If line_items didn't work, try subscription_items table
+                if (empty($priceIds)) {
+                    $subscriptionId = $session['subscription'] ?? null;
+                    if ($subscriptionId) {
+                        // Find subscription in database
+                        $subscription = DB::table('subscriptions')
+                            ->where('stripe_id', $subscriptionId)
+                            ->first();
+
+                        if ($subscription) {
+                            // Get subscription items
+                            $subscriptionItems = DB::table('subscription_items')
+                                ->where('subscription_id', $subscription->id)
+                                ->pluck('stripe_price')
+                                ->toArray();
+
+                            $priceIds = array_merge($priceIds, $subscriptionItems);
+                        } else {
+                            Log::warning('Subscription not found in database, and line_items not available', [
+                                'subscription_id' => $subscriptionId,
+                                'session_id' => $session['id']
+                            ]);
+                        }
+                    }
+                }
+            }
+        } catch (Exception $e) {
+            Log::error('Error extracting price IDs from session', [
+                'session_id' => $session['id'] ?? null,
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
+        }
+
+        return array_unique($priceIds);
+    }
+
+    /**
+     * Clear cart items after successful purchase
+     */
+    protected function clearCartAfterPurchase(array $session)
+    {
+        try {
+            // Only clear if payment is successful
+            if (($session['payment_status'] ?? '') !== 'paid') {
+                Log::info('Skipping cart clear - payment not successful', [
+                    'session_id' => $session['id'],
+                    'payment_status' => $session['payment_status'] ?? 'unknown'
+                ]);
+                return;
+            }
+
+            // Extract price IDs from session
+            $priceIds = $this->extractPriceIdsFromSession($session);
+
+            if (empty($priceIds)) {
+                Log::warning('No price IDs extracted from session, cannot clear cart', [
+                    'session_id' => $session['id'],
+                    'mode' => $session['mode'] ?? 'unknown'
+                ]);
+                return;
+            }
+
+            // Get user_id from metadata or customer
+            $userId = $session['metadata']['user_id'] ?? null;
+            $sessionId = $session['id'] ?? null;
+
+            if (!$userId && !$sessionId) {
+                Log::warning('Cannot clear cart - no user_id or session_id found', [
+                    'session_id' => $session['id'] ?? null
+                ]);
+                return;
+            }
+
+            // Clear cart items
+            $deletedCount = $this->clearCartItems($userId, $sessionId, $priceIds);
+
+            Log::info('Cart items cleared after purchase', [
+                'session_id' => $session['id'],
+                'user_id' => $userId,
+                'price_ids' => $priceIds,
+                'deleted_count' => $deletedCount
+            ]);
+
+        } catch (Exception $e) {
+            Log::error('Error clearing cart after purchase', [
+                'session_id' => $session['id'] ?? null,
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
+            // Don't fail the webhook if cart clearing fails
+        }
+    }
+
+    /**
+     * Clear cart items by price IDs
+     */
+    protected function clearCartItems($userId, $sessionId, array $priceIds): int
+    {
+        try {
+            if (empty($priceIds)) {
+                return 0;
+            }
+
+            $query = Cart::whereIn('price_id', $priceIds);
+
+            if ($userId) {
+                $query->where('user_id', $userId);
+            } elseif ($sessionId) {
+                $query->where('session_id', $sessionId);
+            } else {
+                Log::warning('Cannot clear cart - no user_id or session_id provided');
+                return 0;
+            }
+
+            $deletedCount = $query->count();
+            $query->delete();
+
+            return $deletedCount;
+
+        } catch (Exception $e) {
+            Log::error('Error in clearCartItems', [
+                'user_id' => $userId,
+                'session_id' => $sessionId,
+                'price_ids' => $priceIds,
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
+            return 0;
         }
     }
 }
