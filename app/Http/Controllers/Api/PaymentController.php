@@ -79,6 +79,10 @@ class PaymentController extends Controller
                 $checkout = $subscriptionBuilder->checkout([
                     'success_url' => $frontendUrl . '/payment-success',
                     'cancel_url' => $frontendUrl . '/payment-cancel',
+                    'metadata' => [
+                        'user_id' => $user->id,
+                        'purchased_by' => config('constants.roles.PARENT'),
+                    ],
                 ]); 
             }
 

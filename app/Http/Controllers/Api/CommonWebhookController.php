@@ -259,13 +259,26 @@ class CommonWebhookController extends CashierWebhookController
                             ->first();
 
                         if ($subscription) {
-                            // Get subscription items
+                            // Get subscription items (they should exist by now, but check anyway)
                             $subscriptionItems = DB::table('subscription_items')
                                 ->where('subscription_id', $subscription->id)
                                 ->pluck('stripe_price')
                                 ->toArray();
 
-                            $priceIds = array_merge($priceIds, $subscriptionItems);
+                            if (!empty($subscriptionItems)) {
+                                $priceIds = array_merge($priceIds, $subscriptionItems);
+                                Log::info('Retrieved price_ids from subscription_items', [
+                                    'subscription_id' => $subscriptionId,
+                                    'price_ids' => $priceIds
+                                ]);
+                            } else {
+                                Log::warning('Subscription items not found in database yet', [
+                                    'subscription_id' => $subscriptionId,
+                                    'session_id' => $session['id'],
+                                    'subscription_db_id' => $subscription->id,
+                                    'note' => 'Subscription items may be created by a separate webhook. Cart may need manual clearing.'
+                                ]);
+                            }
                         } else {
                             Log::warning('Subscription not found in database, and line_items not available', [
                                 'subscription_id' => $subscriptionId,
@@ -313,13 +326,46 @@ class CommonWebhookController extends CashierWebhookController
                 return;
             }
 
-            // Get user_id from metadata or customer
+            // Get user_id from metadata, subscription record, or customer
             $userId = $session['metadata']['user_id'] ?? null;
             $sessionId = $session['id'] ?? null;
 
+            // For subscriptions, get user_id from subscription record if not in metadata
+            if (!$userId && $session['mode'] === 'subscription') {
+                $subscriptionId = $session['subscription'] ?? null;
+                if ($subscriptionId) {
+                    $subscription = DB::table('subscriptions')
+                        ->where('stripe_id', $subscriptionId)
+                        ->first();
+                    
+                    if ($subscription) {
+                        $userId = $subscription->user_id;
+                        Log::info('Retrieved user_id from subscription record', [
+                            'subscription_id' => $subscriptionId,
+                            'user_id' => $userId
+                        ]);
+                    } else {
+                        // Try to get from customer_id
+                        $customerId = $session['customer'] ?? null;
+                        if ($customerId) {
+                            $user = User::where('stripe_id', $customerId)->first();
+                            if ($user) {
+                                $userId = $user->id;
+                                Log::info('Retrieved user_id from customer_id', [
+                                    'customer_id' => $customerId,
+                                    'user_id' => $userId
+                                ]);
+                            }
+                        }
+                    }
+                }
+            }
+
             if (!$userId && !$sessionId) {
                 Log::warning('Cannot clear cart - no user_id or session_id found', [
-                    'session_id' => $session['id'] ?? null
+                    'session_id' => $session['id'] ?? null,
+                    'mode' => $session['mode'] ?? 'unknown',
+                    'metadata' => $session['metadata'] ?? []
                 ]);
                 return;
             }
