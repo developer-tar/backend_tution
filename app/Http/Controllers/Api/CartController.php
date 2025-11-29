@@ -146,7 +146,33 @@ class CartController extends Controller
     public function add(AddToCartRequest $request)
     {
         try {
-            $userId = auth()->id();
+            // Check if Bearer token is provided
+            if ($request->bearerToken()) {
+                // Try to authenticate with Bearer token
+                try {
+                    $user = auth('api')->user();
+                    if (!$user) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Invalid or expired Bearer token',
+                            'error' => 'Token authentication failed - please login again to get a fresh token'
+                        ], 401);
+                    }
+                    $userId = $user->id;
+                } catch (Exception $e) {
+                    Log::error('Bearer token validation error in add', ['error' => $e->getMessage()]);
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Bearer token validation failed',
+                        'error' => 'Token signature verification failed - please login again',
+                        'debug' => $e->getMessage()
+                    ], 401);
+                }
+            } else {
+                // No Bearer token, use session authentication
+                $userId = auth()->id();
+            }
+            
             $sessionId = session()->getId();
 
             $productType = config('constants.product_types.' . $request->product_type);
@@ -196,7 +222,33 @@ class CartController extends Controller
     public function update(UpdateCartRequest $request, Cart $cart)
     {
         try {
-            $userId = auth()->id();
+            // Check if Bearer token is provided
+            if ($request->bearerToken()) {
+                // Try to authenticate with Bearer token
+                try {
+                    $user = auth('api')->user();
+                    if (!$user) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Invalid or expired Bearer token',
+                            'error' => 'Token authentication failed - please login again to get a fresh token'
+                        ], 401);
+                    }
+                    $userId = $user->id;
+                } catch (Exception $e) {
+                    Log::error('Bearer token validation error in update', ['error' => $e->getMessage()]);
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Bearer token validation failed',
+                        'error' => 'Token signature verification failed - please login again',
+                        'debug' => $e->getMessage()
+                    ], 401);
+                }
+            } else {
+                // No Bearer token, use session authentication
+                $userId = auth()->id();
+            }
+            
             $sessionId = session()->getId();
 
             // Verify ownership
@@ -231,7 +283,33 @@ class CartController extends Controller
     public function remove(RemoveFromCartRequest $request, Cart $cart)
     {
         try {
-            $userId = auth()->id();
+            // Check if Bearer token is provided
+            if ($request->bearerToken()) {
+                // Try to authenticate with Bearer token
+                try {
+                    $user = auth('api')->user();
+                    if (!$user) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Invalid or expired Bearer token',
+                            'error' => 'Token authentication failed - please login again to get a fresh token'
+                        ], 401);
+                    }
+                    $userId = $user->id;
+                } catch (Exception $e) {
+                    Log::error('Bearer token validation error in remove', ['error' => $e->getMessage()]);
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Bearer token validation failed',
+                        'error' => 'Token signature verification failed - please login again',
+                        'debug' => $e->getMessage()
+                    ], 401);
+                }
+            } else {
+                // No Bearer token, use session authentication
+                $userId = auth()->id();
+            }
+            
             $sessionId = session()->getId();
 
             // Check if the authenticated user or session owns the cart item
