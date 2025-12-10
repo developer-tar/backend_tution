@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Models\Cart;
 use App\Models\MockExam;
 use App\Models\MockExamPurchase;
+use App\Models\Paper;
+use App\Models\PaperPurchase;
 use App\Models\User;
 use Exception;
 use Illuminate\Http\Request;
@@ -49,7 +51,15 @@ class StripeController extends WebhookController
             }
 
             if ($session['mode'] === 'payment') {
-                $result = $this->handleMockExamPurchase($session);
+                // Check metadata type to route to appropriate handler
+                $type = $session['metadata']['type'] ?? null;
+                
+                if ($type === 'paper_purchase') {
+                    $result = $this->handlePaperPurchase($session);
+                } else {
+                    $result = $this->handleMockExamPurchase($session);
+                }
+                
                 // Clear cart items after successful purchase
                 $this->clearCartAfterPurchase($session);
                 return $result;
@@ -178,28 +188,132 @@ class StripeController extends WebhookController
     }
 
     /**
+     * Paper purchase create/update
+     */
+    protected function handlePaperPurchase(array $session)
+    {
+        try {
+            $paperId = $session['metadata']['paper_id'] ?? null;
+            $userId = $session['metadata']['user_id'] ?? null;
+
+            if (!$paperId || !$userId) {
+                Log::error('Paper webhook: Missing metadata', $session['metadata']);
+                return $this->successMethod();
+            }
+
+            $user = User::find($userId);
+            $paper = Paper::find($paperId);
+
+            if (!$user || !$paper) {
+                Log::error('Paper webhook: User or Paper not found', [
+                    'user_id' => $userId,
+                    'paper_id' => $paperId
+                ]);
+                return $this->successMethod();
+            }
+
+            // check existing purchase
+            $existingPurchase = PaperPurchase::where('user_id', $userId)
+                ->where('paper_id', $paperId)
+                ->where('stripe_session_id', $session['id'])
+                ->first();
+
+            if ($existingPurchase) {
+                // Update payment status if purchase already exists
+                $existingPurchase->update([
+                    'payment_status' => config('constants.stripe_payment_status.PAID'),
+                ]);
+                Log::info('Paper purchase updated', [
+                    'purchase_id' => $existingPurchase->id
+                ]);
+                return $this->successMethod();
+            }
+
+            $paymentStatus = $session['payment_status'] ?? 'unpaid';
+
+            $purchase = PaperPurchase::create([
+                'user_id' => $userId,
+                'paper_id' => $paperId,
+                'student_id' => $session['metadata']['student_id'] ?? null,
+                'stripe_session_id' => $session['id'],
+                'transaction_id' => $session['payment_intent'] ?? null,
+                'amount' => ($session['amount_total'] ?? 0) / 100,
+                'currency' => $session['currency'] ?? 'gbp',
+                'purchased_at' => now(),
+                'total_marks' => $paper->total_marks,
+                'status' => config('constants.mock_exam_purchase_status.NOT_STARTED'),
+                'payment_status' => $paymentStatus === 'paid'
+                    ? config('constants.stripe_payment_status.PAID')
+                    : config('constants.stripe_payment_status.FAILED'),
+                'purchased_by' => $session['metadata']['purchased_by'] ?? 'student',
+            ]);
+
+            Log::info('Paper purchase created', [
+                'purchase_id' => $purchase->id,
+                'status' => $purchase->payment_status
+            ]);
+
+            // Cart clearing is handled in handleCheckoutSessionCompleted after purchase creation
+            return $this->successMethod();
+
+        } catch (Exception $e) {
+            Log::error('Paper purchase error: ' . $e->getMessage(), [
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'session' => $session
+            ]);
+            return $this->successMethod();
+        }
+    }
+
+    /**
      * Mark failed payments
      */
     protected function handleFailedPayment(array $session)
     {
         try {
             $userId = $session['metadata']['user_id'] ?? null;
-            $mockExamId = $session['metadata']['mock_exam_id'] ?? null;
+            $type = $session['metadata']['type'] ?? null;
+            
+            // Handle mock exam purchase
+            if ($type === 'mock_exam_purchase' || !$type) {
+                $mockExamId = $session['metadata']['mock_exam_id'] ?? null;
+                if ($userId && $mockExamId) {
+                    $purchase = MockExamPurchase::where('user_id', $userId)
+                        ->where('mock_exam_id', $mockExamId)
+                        ->where('stripe_session_id', $session['id'])
+                        ->first();
 
-            if ($userId && $mockExamId) {
-                $purchase = MockExamPurchase::where('user_id', $userId)
-                    ->where('mock_exam_id', $mockExamId)
-                    ->where('stripe_session_id', $session['id'])
-                    ->first();
+                    if ($purchase) {
+                        $purchase->update([
+                            'payment_status' => config('constants.stripe_payment_status.FAILED'),
+                        ]);
+                        Log::info('Mock exam purchase marked as FAILED', [
+                            'purchase_id' => $purchase->id,
+                            'session_id' => $session['id']
+                        ]);
+                    }
+                }
+            }
+            
+            // Handle paper purchase
+            if ($type === 'paper_purchase') {
+                $paperId = $session['metadata']['paper_id'] ?? null;
+                if ($userId && $paperId) {
+                    $purchase = PaperPurchase::where('user_id', $userId)
+                        ->where('paper_id', $paperId)
+                        ->where('stripe_session_id', $session['id'])
+                        ->first();
 
-                if ($purchase) {
-                    $purchase->update([
-                        'payment_status' => config('constants.stripe_payment_status.FAILED'),
-                    ]);
-                    Log::info('Purchase marked as FAILED', [
-                        'purchase_id' => $purchase->id,
-                        'session_id' => $session['id']
-                    ]);
+                    if ($purchase) {
+                        $purchase->update([
+                            'payment_status' => config('constants.stripe_payment_status.FAILED'),
+                        ]);
+                        Log::info('Paper purchase marked as FAILED', [
+                            'purchase_id' => $purchase->id,
+                            'session_id' => $session['id']
+                        ]);
+                    }
                 }
             }
 

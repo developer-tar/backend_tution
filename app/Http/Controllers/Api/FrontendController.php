@@ -7,6 +7,7 @@ use App\Http\Requests\Api\SlugValidateRequest;
 use App\Models\Course;
 use App\Models\MockExam;
 use App\Models\MockExamCategory;
+use App\Models\Paper;
 use App\Models\User;
 use Exception;
 use Illuminate\Http\Request;
@@ -273,6 +274,111 @@ class FrontendController extends Controller
     public function mockExamCategories()
     {
         try {
+            $categories = MockExamCategory::whereNull('parent_id')
+                ->with('allChildren')
+                ->orderBy('name')
+                ->get();
+            return sendResponse($categories, 'Categories fetched successfully.');
+            
+        } catch (Exception $e) {
+            return errorLog("Failed to fetch categories: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+        }
+    }
+
+    public function paperView(Request $request)
+    {
+        try {
+            $categoryId = $request->input('category_id');
+            $formatId = $request->input('format_id');
+
+            $papers = Paper::with([
+                'category:id,name',
+                'format:id,name',
+                'school:id,name',
+            ])
+                ->where('status', config('constants.statuses.APPROVED'))
+                ->when($categoryId, fn($q) => $q->where('category_id', $categoryId))
+                ->when($formatId, fn($q) => $q->where('format_id', $formatId))
+                ->latest()
+                ->paginate(12)
+                ->through(function ($paper) {
+                    $tableMap = config('constants.table_map');
+                    $productTypeKey = array_search('papers', $tableMap) ?: 'papers';
+                   
+                    return [
+                        'id' => $paper->id,
+                        'name' => $paper->name,
+                        'description' => Str::limit($paper->description, 100),
+                        'category' => $paper->category?->name,
+                        'format' => $paper->format->name,
+                        'price' => $paper->price,
+                        'currency' => $paper->currency,
+                        'duration_minutes' => $paper->duration_minutes,
+                        'total_marks' => $paper->total_marks,
+                        'school' => $paper->school?->name,
+                        'slug' => $paper->slug,
+                        'image' => $paper->getFirstMediaUrl('paper_image') ?: config('constants.dummy_image'),
+                        'stripe_product_id' => $paper->stripe_product_id,
+                        'stripe_price_id' => $paper->stripe_price_id,
+                        'product_type' => $productTypeKey,
+                    ];
+                });
+
+            return sendResponse($papers, 'Papers fetched successfully.');
+        } catch (Exception $e) {
+            return errorLog("Failed to fetch papers: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+        }
+    }
+
+    public function paperDetails($slug)
+    {
+        try {
+            $paper = Paper::with([
+                'category:id,name',
+                'format:id,name',
+                'school:id,name',
+                'questions:id,paper_id',
+            ])
+                ->where('status', config('constants.statuses.APPROVED'))
+                ->where('slug', $slug)
+                ->first();
+
+            if (!$paper) {
+                return sendError('Paper not found', [], 404);
+            }
+
+            $tableMap = config('constants.table_map');
+            $productTypeKey = array_search('papers', $tableMap) ?: 'papers';
+            
+            $data = [
+                'id' => $paper->id,
+                'name' => $paper->name,
+                'description' => $paper->description,
+                'category' => $paper->category?->name,
+                'format' => $paper->format->name,
+                'price' => $paper->price,
+                'currency' => $paper->currency,
+                'duration_minutes' => $paper->duration_minutes,
+                'total_marks' => $paper->total_marks,
+                'school' => $paper->school?->name,
+                'questions_count' => $paper->questions->count(),
+                'slug' => $paper->slug,
+                'image' => $paper->getFirstMediaUrl('paper_image') ?: config('constants.dummy_image'),
+                'stripe_product_id' => $paper->stripe_product_id,
+                'stripe_price_id' => $paper->stripe_price_id,
+                'product_type' => $productTypeKey,
+            ];
+
+            return sendResponse($data, 'Paper details fetched successfully.');
+        } catch (Exception $e) {
+            return errorLog("Failed to fetch paper details: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+        }
+    }
+
+    public function paperCategories()
+    {
+        try {
+            // Papers use the same categories as mock exams
             $categories = MockExamCategory::whereNull('parent_id')
                 ->with('allChildren')
                 ->orderBy('name')

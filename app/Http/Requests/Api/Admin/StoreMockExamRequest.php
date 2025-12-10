@@ -9,7 +9,16 @@ class StoreMockExamRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true;
+        // Check if user is authenticated
+        $user = $this->user();
+        if (!$user) {
+            return false;
+        }
+        
+        // Check if user has admin role using constants
+        return $user->roles()
+            ->where('name', config('constants.roles.ADMIN'))
+            ->exists();
     }
 
     public function rules(): array
@@ -18,9 +27,9 @@ class StoreMockExamRequest extends FormRequest
             'name'              => ['required', 'string', 'max:255'],
             'description'       => ['nullable', 'string'],
             'category_id'       => ['required', 'integer', 'exists:mock_exam_categories,id'],
-            'format_id'            => ['required', 'string', 'exists:formats,id'],
+            'format_id'            => ['required', 'integer', 'exists:formats,id'],
             'price'             => ['required', 'numeric', 'min:0'],
-            'currency'          => ['nullable', 'string', 'max:3'],
+            'currency'          => ['nullable', 'string', 'size:1', 'in:€,$,£'],
             'duration_minutes'  => ['nullable', 'integer', 'min:1'],
             'school_id'         => ['nullable', 'integer', 'exists:schools,id'],
 
@@ -67,6 +76,12 @@ class StoreMockExamRequest extends FormRequest
                 if (!isset($options[$index]) || !in_array($answer, $options[$index], true)) {
                     $validator->errors()->add("answers.$index", "The answer must match one of the options for question #" . ($index + 1) . ".");
                 }
+            }
+
+            // Validate marks count matches questions count
+            $marks = $this->input('marks', []);
+            if (!empty($marks) && count($marks) !== $count) {
+                $validator->errors()->add('marks', 'The number of marks must match the number of questions.');
             }
         });
     }

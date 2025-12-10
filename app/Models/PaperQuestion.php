@@ -5,12 +5,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class MockExamQuestion extends Model
+class PaperQuestion extends Model
 {
     use SoftDeletes;
 
     protected $fillable = [
-        'mock_exam_id',
+        'paper_id',
         'question_text',
         'marks',
         'duration_in_sec',
@@ -19,25 +19,32 @@ class MockExamQuestion extends Model
     ];
 
     protected $casts = [
-        'mock_exam_id' => 'integer',
+        'paper_id' => 'integer',
         'marks' => 'integer',
         'duration_in_sec' => 'integer',
         'order' => 'integer',
         'status' => 'integer',
     ];
 
-    public function mockExam()
+    public function paper()
     {
-        return $this->belongsTo(MockExam::class, 'mock_exam_id');
+        return $this->belongsTo(Paper::class, 'paper_id');
     }
 
     public function options()
     {
-        return $this->hasMany(MockExamOption::class, 'mock_exam_question_id');
+        return $this->hasMany(PaperOption::class, 'paper_question_id');
     }
 
     public function userAnswers()
     {
-        return $this->hasMany(MockExamUserAnswer::class, 'mock_exam_question_id');
+        return $this->hasMany(PaperUserAnswer::class, 'paper_question_id');
     }
 }
+
+
+
+
+
+
+

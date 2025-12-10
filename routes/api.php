@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\CommonWebhookController;
 use App\Http\Controllers\Api\MockExamPurchaseController;
 use App\Http\Controllers\Api\MockExamWebhookController;
+use App\Http\Controllers\Api\PaperPurchaseController;
 use App\Http\Controllers\Api\StripeController;
 use App\Http\Controllers\Api\TestWebhookController;
 use Illuminate\Support\Facades\Route;
@@ -46,6 +47,11 @@ Route::get('course/view', [FrontendController::class, 'courseView']);
 Route::get('mock-exam/view', [FrontendController::class, 'mockExamView']);
 Route::get('mock-exam/{slug}/details', [FrontendController::class, 'mockExamDetails']);
 Route::get('mock-exam/categories', [FrontendController::class, 'mockExamCategories']);
+
+// Paper public routes
+Route::get('paper/view', [FrontendController::class, 'paperView']);
+Route::get('paper/{slug}/details', [FrontendController::class, 'paperDetails']);
+Route::get('paper/categories', [FrontendController::class, 'paperCategories']);
 
 // Common webhook for both subscriptions and mock exam purchases
 Route::post('stripe/webhook', [StripeController::class, 'handleWebhook']);

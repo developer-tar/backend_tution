@@ -38,4 +38,10 @@ class MockExamCategory extends Model
     {
         return $this->hasMany(MockExam::class, 'category_id');
     }
+
+    // Papers in this category
+    public function papers()
+    {
+        return $this->hasMany(Paper::class, 'category_id');
+    }
 }

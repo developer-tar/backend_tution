@@ -53,6 +53,13 @@ class MockExamWebhookController extends CashierWebhookController
                 ->first();
 
             if ($existingPurchase) {
+                // Update payment status if needed
+                if ($existingPurchase->payment_status !== config('constants.stripe_payment_status.PAID')) {
+                    $existingPurchase->update([
+                        'payment_status' => config('constants.stripe_payment_status.PAID'),
+                        'purchased_at' => now(),
+                    ]);
+                }
                 Log::info('Mock exam purchase already exists', ['purchase_id' => $existingPurchase->id]);
                 return $this->successMethod();
             }
@@ -70,6 +77,7 @@ class MockExamWebhookController extends CashierWebhookController
                 'total_marks' => $mockExam->total_marks,
                 'status' => config('constants.mock_exam_purchase_status.NOT_STARTED'),
                 'purchased_by' => $session['metadata']['purchased_by'] ?? 'student', // parent or student
+                'payment_status' => config('constants.stripe_payment_status.PAID'), // Add payment status
             ]);
 
             Log::info('Mock exam purchase created successfully', [

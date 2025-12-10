@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\MockExamPurchaseController;
+use App\Http\Controllers\Api\PaperPurchaseController;
 use App\Http\Controllers\Api\Parent\ParentStudentCourseController;
 use App\Http\Controllers\Api\Parent\StudentController;
 use App\Http\Controllers\Api\PaymentController;
@@ -38,3 +39,6 @@ Route::post('/checkout', [PaymentController::class, 'checkout']);
 
 // Parent subscriptions
 Route::get('subscriptions', [ParentStudentCourseController::class, 'getSubscriptions']);
+
+// Paper checkout for parents
+Route::post('paper/checkout', [PaperPurchaseController::class, 'parentCheckout']);

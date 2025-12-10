@@ -1,5 +1,7 @@
 <?php
 use App\Http\Controllers\Api\Admin\Assign\MockExamController;
+use App\Http\Controllers\Api\Admin\Assign\PaperController;
+use App\Http\Controllers\Api\PaperPurchaseController;
 use App\Http\Controllers\Api\Parent\StudentController;
 use App\Http\Controllers\Api\Student\AssignmentController;
 use App\Http\Controllers\Api\Student\TestResultController;
@@ -53,6 +55,14 @@ Route::post('mark/content/completed', [AssignmentController::class, 'markContent
 Route::get('my-mock-exams', [MockExamController::class, 'myMockExams']);
 Route::post('mock-exam/{mockExamId}/start', [MockExamController::class, 'startExam']);
 Route::post('mock-exam/{purchaseId}/submit', [MockExamController::class, 'submitExam']);
+
+// Paper routes
+Route::get('my-papers', [PaperController::class, 'myPapers']);
+Route::post('paper/{paperId}/start', [PaperController::class, 'startPaper']);
+Route::post('paper/{purchaseId}/submit', [PaperController::class, 'submitPaper']);
+Route::post('paper/purchase', [PaperPurchaseController::class, 'purchasePaper']);
+Route::get('paper/my-purchases', [PaperPurchaseController::class, 'myPurchases']);
+Route::post('paper/verify-payment', [PaperPurchaseController::class, 'verifyPayment']);
 
 //test results routes
 Route::get('test-results/by-weeks', [TestResultController::class, 'getTestResultsByWeeks']);

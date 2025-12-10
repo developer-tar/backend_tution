@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\Admin\Assign\{AssignedStudentCourseController, Assi
 
 use App\Http\Controllers\Api\Admin\Assign\{CourseController, TopicSubTopicController, TimeSlotController};
 use App\Http\Controllers\Api\Admin\Assign\MockExamController;
+use App\Http\Controllers\Api\Admin\Assign\PaperController;
 use App\Http\Controllers\Api\Admin\MasterFormController;
 use App\Http\Controllers\Api\Admin\ParentController;
 use App\Http\Controllers\Api\Admin\StudentController;
@@ -57,6 +58,18 @@ Route::patch('mock-exam/category/{id}', [MockExamController::class, 'updateCateg
 Route::delete('mock-exam/category/{id}', [MockExamController::class, 'deleteCategory']);
 Route::resource('mock-exam', MockExamController::class);
 Route::patch('mock-exam/{mockExam}/toggle-status', [MockExamController::class, 'toggleStatus']);
+
+// Paper category routes (uses MockExamCategory - shared with mock exams)
+Route::get('paper/categories', [PaperController::class, 'getCategories']);
+Route::get('paper/category-tree', [PaperController::class, 'getCategoryTree']);
+Route::post('paper/category', [PaperController::class, 'storeCategory']);
+Route::put('paper/category/{id}', [PaperController::class, 'updateCategory']);
+Route::patch('paper/category/{id}', [PaperController::class, 'updateCategory']);
+Route::delete('paper/category/{id}', [PaperController::class, 'deleteCategory']);
+
+// Paper CRUD routes
+Route::resource('paper', PaperController::class);
+Route::patch('paper/{paper}/toggle-status', [PaperController::class, 'toggleStatus']);
 //end mock exam routing
 
 Route::get('ca_records', [AssignmentController::class, 'courseAcdemicRecords']);

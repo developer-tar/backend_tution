@@ -6,7 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
-class MockExam extends Model implements HasMedia
+
+class Paper extends Model implements HasMedia
 {
     use SoftDeletes, InteractsWithMedia;
 
@@ -48,15 +49,35 @@ class MockExam extends Model implements HasMedia
 
     public function questions()
     {
-        return $this->hasMany(MockExamQuestion::class, 'mock_exam_id');
+        return $this->hasMany(PaperQuestion::class, 'paper_id');
     }
 
     public function purchases()
     {
-        return $this->hasMany(MockExamPurchase::class, 'mock_exam_id');
+        return $this->hasMany(PaperPurchase::class, 'paper_id');
     }
+
     public function format()
     {
         return $this->belongsTo(Format::class, 'format_id');
     }
+
+    public function registerMediaCollections(): void
+    {
+        // Existing paper_image collection
+        $this->addMediaCollection('paper_image')
+            ->singleFile()
+            ->acceptsMimeTypes(['image/jpeg', 'image/png', 'image/jpg', 'image/gif', 'image/webp']);
+        
+        // New collection for multiple PDFs (max 10)
+        $this->addMediaCollection('paper_pdfs')
+            ->acceptsMimeTypes(['application/pdf']);
+    }
 }
+
+
+
+
+
+
+

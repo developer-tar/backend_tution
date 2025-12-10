@@ -123,11 +123,12 @@ return [
         'course' => 1,
         'mock' => 2,
         'paper' => 3,
+        'papers' => 3,
     ],
     'table_map' => [
         'course' => 'courses',
         'mock' => 'mock_exams',
-        'exam' => 'exams',
+        'papers' => 'papers',
     ],
     'week_days' => [1 => 'Monday', 2 => 'Tuesday', 3 => 'Wednesday', 4 => 'Thursday', 5 => 'Friday', 6 => 'Saturday', 7 => 'Sunday'],
     'gap_between_start_end_time' => 29,

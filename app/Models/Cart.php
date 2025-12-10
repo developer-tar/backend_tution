@@ -23,4 +23,7 @@ class Cart extends Model
     public function mockExam() {
         return $this->belongsTo(MockExam::class, 'product_id', 'id');
     }
+    public function paper() {
+        return $this->belongsTo(Paper::class, 'product_id', 'id');
+    }
 }

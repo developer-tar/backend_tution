@@ -5,14 +5,14 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class MockExamPurchase extends Model
+class PaperPurchase extends Model
 {
     use SoftDeletes;
 
     protected $fillable = [
         'user_id',
         'student_id',
-        'mock_exam_id',
+        'paper_id',
         'stripe_session_id',
         'transaction_id',
         'amount',
@@ -37,7 +37,7 @@ class MockExamPurchase extends Model
         'status' => 'integer',
         'user_id' => 'integer',
         'student_id' => 'integer',
-        'mock_exam_id' => 'integer',
+        'paper_id' => 'integer',
     ];
 
     public function user()
@@ -50,13 +50,20 @@ class MockExamPurchase extends Model
         return $this->belongsTo(User::class, 'student_id');
     }
 
-    public function mockExam()
+    public function paper()
     {
-        return $this->belongsTo(MockExam::class, 'mock_exam_id');
+        return $this->belongsTo(Paper::class, 'paper_id');
     }
 
     public function userAnswers()
     {
-        return $this->hasMany(MockExamUserAnswer::class, 'mock_exam_purchase_id');
+        return $this->hasMany(PaperUserAnswer::class, 'paper_purchase_id');
     }
 }
+
+
+
+
+
+
+

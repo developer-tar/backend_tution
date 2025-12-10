@@ -95,15 +95,20 @@ class MockExamController extends Controller
         ]);
 
         try {
+            DB::beginTransaction();
+            
             $category = MockExamCategory::findOrFail($id);
             if ($request->has('parent_id') && $request->parent_id == $category->id) {
+                DB::rollBack();
                 return sendError('Category cannot be its own parent', [], 422);
             }
             
             $category->update($request->only(['name', 'parent_id']));
             
+            DB::commit();
             return sendResponse($category, 'Category updated successfully');
         } catch (Exception $e) {
+            DB::rollBack();
             return errorLog("Failed to update category: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
@@ -111,20 +116,26 @@ class MockExamController extends Controller
     public function deleteCategory($id)
     {
         try {
+            DB::beginTransaction();
+            
             $category = MockExamCategory::findOrFail($id);
             
             if ($category->children()->exists()) {
+                DB::rollBack();
                 return sendError('Cannot delete category with sub-categories', [], 400);
             }
             
             if ($category->mockExams()->exists()) {
+                DB::rollBack();
                 return sendError('Cannot delete category with associated mock exams', [], 400);
             }
             
             $category->delete();
             
+            DB::commit();
             return sendResponse(null, 'Category deleted successfully');
         } catch (Exception $e) {
+            DB::rollBack();
             return errorLog("Failed to delete category: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
@@ -141,6 +152,7 @@ class MockExamController extends Controller
                 'school:id,name',
                 'questions:id,mock_exam_id',
                 'format:id,name',
+                'media', // Eager load media for images
             ])
                 ->when($categoryId, fn($q) => $q->where('category_id', $categoryId))
                 ->when($format, fn($q) => $q->where('format_id', $format))
@@ -200,7 +212,10 @@ class MockExamController extends Controller
                 'school_name' => $mockExam->school?->name,
                 'image' => $mockExam->getFirstMediaUrl('mock_exam_image') ?: config('constants.dummy_image'),
                 'questions' => $mockExam->questions->map(function ($question) {
-                    $correctOption = $question->options->first(fn($opt) => $opt->answer !== null);
+                    // Fix: Properly check if option has an answer relationship
+                    $correctOption = $question->options->first(function($opt) {
+                        return $opt->answer()->exists();
+                    });
                     return [
                         'id' => $question->id,
                         'question_text' => $question->question_text,
@@ -260,9 +275,11 @@ class MockExamController extends Controller
                     ]);
 
                     if ($optionObj->option_text == $request->input('answers')[$key]) {
-                        MockExamAnswer::firstOrCreate([
-                            'mock_exam_option_id' => $optionObj->id,
-                        ]);
+                        // Use updateOrCreate to prevent duplicates
+                        MockExamAnswer::updateOrCreate(
+                            ['mock_exam_option_id' => $optionObj->id],
+                            ['status' => config('constants.statuses.APPROVED')]
+                        );
                     }
                 }
             }
@@ -308,13 +325,20 @@ class MockExamController extends Controller
                 'content_type' => $request->header('Content-Type')
             ]);
 
+            $mockExam = MockExam::findOrFail($id);
+            
+            // Check authorization using policy
+            $this->authorize('update', $mockExam);
+            
             DB::beginTransaction();
 
-            $mockExam = MockExam::findOrFail($id);
             $oldPrice = $mockExam->price;
 
             $updateData = [];
-            if ($request->has('name')) $updateData['name'] = $request->name;
+            if ($request->has('name')) {
+                $updateData['name'] = $request->name;
+                $updateData['slug'] = Str::slug($request->name); // Update slug when name changes
+            }
             if ($request->has('description')) $updateData['description'] = $request->description;
             if ($request->has('category_id')) $updateData['category_id'] = $request->category_id;
             if ($request->has('format_id')) $updateData['format_id'] = $request->format_id;
@@ -325,6 +349,47 @@ class MockExamController extends Controller
 
             if (!empty($updateData)) {
                 $mockExam->update($updateData);
+            }
+
+            // Handle questions/options/answers update if provided
+            if ($request->has('questions') && $request->has('options') && $request->has('answers')) {
+                Log::info("Updating questions/options/answers for mock exam ID: {$id}");
+
+                // Delete existing questions (cascade will delete options and answers)
+                $mockExam->questions()->delete();
+
+                $marks = $request->input('marks', []);
+                $totalMarks = !empty($marks) ? array_sum($marks) : count($request->questions);
+                
+                // Update total_marks if questions are being updated
+                $mockExam->update(['total_marks' => $totalMarks]);
+
+                // Create new questions, options, and answers
+                foreach ($request->input('questions') as $key => $question) {
+                    $questionObj = MockExamQuestion::create([
+                        'mock_exam_id' => $mockExam->id,
+                        'question_text' => $question,
+                        'marks' => $marks[$key] ?? 1,
+                        'duration_in_sec' => $request->input('duration_in_sec')[$key],
+                        'order' => $key + 1,
+                    ]);
+
+                    foreach ($request->input('options')[$key] as $option) {
+                        $optionObj = MockExamOption::create([
+                            'mock_exam_question_id' => $questionObj->id,
+                            'option_text' => $option,
+                        ]);
+
+                        if ($optionObj->option_text == $request->input('answers')[$key]) {
+                            MockExamAnswer::updateOrCreate(
+                                ['mock_exam_option_id' => $optionObj->id],
+                                ['status' => config('constants.statuses.APPROVED')]
+                            );
+                        }
+                    }
+                }
+
+                Log::info("Questions/options/answers updated successfully for mock exam ID: {$id}");
             }
 
             if ($request->hasFile('mock_exam_image')) {
@@ -368,16 +433,22 @@ class MockExamController extends Controller
     public function destroy($id)
     {
         try {
+            DB::beginTransaction();
+            
             $mockExam = MockExam::findOrFail($id);
             
-            if (MockExamPurchase::where('mock_exam_id', $id)->exists()) {
+            // Check including soft-deleted purchases
+            if (MockExamPurchase::withTrashed()->where('mock_exam_id', $id)->exists()) {
+                DB::rollBack();
                 return sendError('Cannot delete mock exam. This mock exam has been purchased by one or more parents or students.', [], 400);
             }
 
             $mockExam->delete();
 
+            DB::commit();
             return sendResponse(null, 'Mock exam deleted successfully');
         } catch (Exception $e) {
+            DB::rollBack();
             return errorLog("Failed to delete mock exam: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
@@ -446,6 +517,16 @@ class MockExamController extends Controller
                 return sendError('You have not purchased this mock exam', [], 403);
             }
 
+            // Add payment status check
+            if ($purchase->payment_status !== config('constants.stripe_payment_status.PAID')) {
+                return sendError('Payment not completed', [], 400);
+            }
+
+            // Add check for already started
+            if ($purchase->started_at !== null) {
+                return sendError('Exam has already been started', [], 400);
+            }
+
             if ($purchase->status == config('constants.mock_exam_purchase_status.COMPLETED')) {
                 return sendError('You have already completed this exam', [], 400);
             }
@@ -472,10 +553,45 @@ class MockExamController extends Controller
         try {
             DB::beginTransaction();
 
-            $purchase = MockExamPurchase::findOrFail($purchaseId);
+            $purchase = MockExamPurchase::with('mockExam.questions')->findOrFail($purchaseId);
 
             if ($purchase->user_id !== Auth::id()) {
+                DB::rollBack();
                 return sendError('Unauthorized', [], 403);
+            }
+
+            // Add validation: Exam must be started
+            if (!$purchase->started_at) {
+                DB::rollBack();
+                return sendError('Exam has not been started', [], 400);
+            }
+
+            // Add validation: Exam must not be completed
+            if ($purchase->status == config('constants.mock_exam_purchase_status.COMPLETED')) {
+                DB::rollBack();
+                return sendError('Exam has already been completed', [], 400);
+            }
+
+            // Validate all questions belong to the exam
+            $examQuestionIds = $purchase->mockExam->questions->pluck('id')->toArray();
+            $submittedQuestionIds = array_column($request->answers, 'question_id');
+            
+            if (count($submittedQuestionIds) !== count($examQuestionIds) ||
+                !empty(array_diff($submittedQuestionIds, $examQuestionIds))) {
+                DB::rollBack();
+                return sendError('Invalid questions submitted', [], 400);
+            }
+
+            // Validate each option belongs to its question
+            foreach ($request->answers as $answer) {
+                $option = MockExamOption::where('id', $answer['option_id'])
+                    ->where('mock_exam_question_id', $answer['question_id'])
+                    ->first();
+                
+                if (!$option) {
+                    DB::rollBack();
+                    return sendError("Option does not belong to question {$answer['question_id']}", [], 400);
+                }
             }
 
             $score = 0;
@@ -484,7 +600,9 @@ class MockExamController extends Controller
             foreach ($request->answers as $answer) {
                 $question = MockExamQuestion::find($answer['question_id']);
                 $option = MockExamOption::find($answer['option_id']);
-                $isCorrect = $option->answer !== null;
+                
+                // Fix: Properly check if option has an answer relationship
+                $isCorrect = MockExamAnswer::where('mock_exam_option_id', $option->id)->exists();
 
                 if ($isCorrect) {
                     $score += $question->marks;
@@ -511,7 +629,7 @@ class MockExamController extends Controller
             return sendResponse([
                 'score' => $score,
                 'total_marks' => $totalMarks,
-                'percentage' => round(($score / $totalMarks) * 100, 2),
+                'percentage' => $totalMarks > 0 ? round(($score / $totalMarks) * 100, 2) : 0,
             ], 'Exam submitted successfully');
         } catch (Exception $e) {
             DB::rollBack();

@@ -65,6 +65,9 @@ class CartController extends Controller
                 },
                 'mockExam' => function ($query) {
                     // Only load if product_type is mock
+                },
+                'paper.format' => function ($query) {
+                    // Load paper with format relationship for papers
                 }
             ]);
 
@@ -73,10 +76,18 @@ class CartController extends Controller
                     $productType = $item->product_type;
                     $quantity = $item->quantity ?? 1;
                     
+                    // Convert product_type integer back to string key for consistency with frontend API
+                    $productTypeMap = array_flip(config('constants.product_types'));
+                    $productTypeKey = $productTypeMap[$productType] ?? null;
+                    // Prefer 'papers' over 'paper' if both exist
+                    if ($productType == config('constants.product_types.papers')) {
+                        $productTypeKey = 'papers';
+                    }
+                    
                     // Initialize response array with common structure
                     $response = [
                         'cart_id' => $item->id,
-                        'product_type' => $productType,
+                        'product_type' => $productTypeKey ?? $productType, // Use string key if available, fallback to integer
                         'quantity' => $quantity,
                         'price_id' => $item->price_id ?? null,
                     ];
@@ -122,6 +133,34 @@ class CartController extends Controller
                         $response['mock_exam_total_marks'] = $mockExam->total_marks ?? null;
                         $response['mock_exam_currency'] = $mockExam->currency ?? null;
                         $response['mock_exam_slug'] = $mockExam->slug ?? null;
+                    }
+                    // Check if it's a paper
+                    elseif (($productType == config('constants.product_types.papers') || $productType == config('constants.product_types.paper')) && $item->paper) {
+                        $paper = $item->paper;
+                        $amount = $paper->price ?? 0;
+                        
+                        if ($paper->getFirstMediaUrl('paper_image') == "") {
+                            $image = config('constants.dummy_image');
+                        } else {
+                            $image = $paper->getFirstMediaUrl('paper_image');
+                        }
+                        
+                        // Course keys maintained for consistency
+                        $response['course_name'] = $paper->name ?? 'Unknown Product';
+                        $response['course_image'] = $image;
+                        $response['course_price'] = $amount;
+                        $response['total_price'] = $quantity * $amount;
+                        
+                        // Additional paper specific keys
+                        $response['paper_name'] = $paper->name ?? null;
+                        $response['paper_description'] = $paper->description ?? null;
+                        $response['paper_format'] = $paper->format?->name ?? null;
+                        $response['paper_duration_minutes'] = $paper->duration_minutes ?? null;
+                        $response['paper_total_marks'] = $paper->total_marks ?? null;
+                        $response['paper_currency'] = $paper->currency ?? null;
+                        $response['paper_slug'] = $paper->slug ?? null;
+                        $response['paper_stripe_product_id'] = $paper->stripe_product_id ?? null;
+                        $response['paper_stripe_price_id'] = $paper->stripe_price_id ?? null;
                     }
                     
                     return $response;
