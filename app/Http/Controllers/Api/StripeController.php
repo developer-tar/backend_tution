@@ -54,15 +54,39 @@ class StripeController extends WebhookController
                 // Check metadata type to route to appropriate handler
                 $type = $session['metadata']['type'] ?? null;
                 
-                if ($type === 'paper_purchase') {
-                    $result = $this->handlePaperPurchase($session);
-                } else {
-                    $result = $this->handleMockExamPurchase($session);
+                try {
+                    if ($type === 'paper_purchase') {
+                        $result = $this->handlePaperPurchase($session);
+                    } else {
+                        $result = $this->handleMockExamPurchase($session);
+                    }
+                    
+                    // Clear cart items after successful purchase
+                    try {
+                        $this->clearCartAfterPurchase($session);
+                    } catch (Exception $cartException) {
+                        // Log cart clearing error but don't fail the webhook
+                        Log::error('Cart clearing failed after purchase', [
+                            'error' => $cartException->getMessage(),
+                            'file' => $cartException->getFile(),
+                            'line' => $cartException->getLine(),
+                            'session_id' => $session['id'] ?? null
+                        ]);
+                    }
+                    
+                    return $result;
+                } catch (Exception $e) {
+                    Log::error('Payment processing failed', [
+                        'error' => $e->getMessage(),
+                        'file' => $e->getFile(),
+                        'line' => $e->getLine(),
+                        'trace' => $e->getTraceAsString(),
+                        'session_id' => $session['id'] ?? null,
+                        'type' => $type
+                    ]);
+                    // Still return success to prevent webhook retries
+                    return $this->successMethod();
                 }
-                
-                // Clear cart items after successful purchase
-                $this->clearCartAfterPurchase($session);
-                return $result;
             }
 
             if ($session['mode'] === 'subscription') {
@@ -79,7 +103,10 @@ class StripeController extends WebhookController
             Log::error('Webhook error in handleCheckoutSessionCompleted: ' . $e->getMessage(), [
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
-                'payload' => $payload
+                'trace' => $e->getTraceAsString(),
+                'session_id' => $payload['data']['object']['id'] ?? null,
+                'metadata' => $payload['data']['object']['metadata'] ?? [],
+                'payment_status' => $payload['data']['object']['payment_status'] ?? null
             ]);
             return $this->successMethod();
         }
@@ -196,8 +223,18 @@ class StripeController extends WebhookController
             $paperId = $session['metadata']['paper_id'] ?? null;
             $userId = $session['metadata']['user_id'] ?? null;
 
+            Log::info('Paper webhook: Processing purchase', [
+                'session_id' => $session['id'] ?? null,
+                'paper_id' => $paperId,
+                'user_id' => $userId,
+                'metadata' => $session['metadata'] ?? []
+            ]);
+
             if (!$paperId || !$userId) {
-                Log::error('Paper webhook: Missing metadata', $session['metadata']);
+                Log::error('Paper webhook: Missing metadata', [
+                    'metadata' => $session['metadata'] ?? [],
+                    'session_id' => $session['id'] ?? null
+                ]);
                 return $this->successMethod();
             }
 
@@ -207,7 +244,10 @@ class StripeController extends WebhookController
             if (!$user || !$paper) {
                 Log::error('Paper webhook: User or Paper not found', [
                     'user_id' => $userId,
-                    'paper_id' => $paperId
+                    'paper_id' => $paperId,
+                    'user_exists' => $user !== null,
+                    'paper_exists' => $paper !== null,
+                    'session_id' => $session['id'] ?? null
                 ]);
                 return $this->successMethod();
             }
@@ -230,23 +270,76 @@ class StripeController extends WebhookController
             }
 
             $paymentStatus = $session['payment_status'] ?? 'unpaid';
+            
+            // Handle student_id: convert empty string to null (for foreign key constraint)
+            $studentId = $session['metadata']['student_id'] ?? null;
+            $studentId = ($studentId === '' || $studentId === null) ? null : (int)$studentId;
 
-            $purchase = PaperPurchase::create([
-                'user_id' => $userId,
-                'paper_id' => $paperId,
-                'student_id' => $session['metadata']['student_id'] ?? null,
-                'stripe_session_id' => $session['id'],
-                'transaction_id' => $session['payment_intent'] ?? null,
+            // Validate constants exist
+            $notStartedStatus = config('constants.mock_exam_purchase_status.NOT_STARTED');
+            $paidStatus = config('constants.stripe_payment_status.PAID');
+            $failedStatus = config('constants.stripe_payment_status.FAILED');
+            
+            if (!$notStartedStatus || !$paidStatus || !$failedStatus) {
+                Log::error('Missing constants for paper purchase', [
+                    'not_started' => $notStartedStatus,
+                    'paid' => $paidStatus,
+                    'failed' => $failedStatus
+                ]);
+                throw new Exception('Missing required constants for paper purchase');
+            }
+
+            Log::info('Creating paper purchase record', [
+                'user_id' => (int)$userId,
+                'paper_id' => (int)$paperId,
+                'student_id' => $studentId,
                 'amount' => ($session['amount_total'] ?? 0) / 100,
                 'currency' => $session['currency'] ?? 'gbp',
-                'purchased_at' => now(),
+                'payment_status' => $paymentStatus,
                 'total_marks' => $paper->total_marks,
-                'status' => config('constants.mock_exam_purchase_status.NOT_STARTED'),
-                'payment_status' => $paymentStatus === 'paid'
-                    ? config('constants.stripe_payment_status.PAID')
-                    : config('constants.stripe_payment_status.FAILED'),
-                'purchased_by' => $session['metadata']['purchased_by'] ?? 'student',
+                'paper_name' => $paper->name
             ]);
+
+            try {
+                $purchaseData = [
+                    'user_id' => (int)$userId,
+                    'paper_id' => (int)$paperId,
+                    'student_id' => $studentId,
+                    'stripe_session_id' => $session['id'],
+                    'transaction_id' => $session['payment_intent'] ?? null,
+                    'amount' => ($session['amount_total'] ?? 0) / 100,
+                    'currency' => $session['currency'] ?? 'gbp',
+                    'purchased_at' => now(),
+                    'total_marks' => $paper->total_marks, // Can be null
+                    'status' => $notStartedStatus,
+                    'payment_status' => $paymentStatus === 'paid' ? $paidStatus : $failedStatus,
+                    'purchased_by' => $session['metadata']['purchased_by'] ?? 'student',
+                ];
+                
+                Log::info('Paper purchase data prepared', $purchaseData);
+                
+                $purchase = PaperPurchase::create($purchaseData);
+            } catch (\Illuminate\Database\QueryException $dbException) {
+                Log::error('Database error creating paper purchase', [
+                    'error' => $dbException->getMessage(),
+                    'error_code' => $dbException->getCode(),
+                    'sql_state' => $dbException->errorInfo[0] ?? null,
+                    'sql_error' => $dbException->errorInfo[2] ?? null,
+                    'user_id' => (int)$userId,
+                    'paper_id' => (int)$paperId,
+                    'student_id' => $studentId,
+                    'purchase_data' => $purchaseData ?? []
+                ]);
+                throw $dbException; // Re-throw to be caught by outer catch
+            } catch (\Exception $e) {
+                Log::error('Unexpected error creating paper purchase', [
+                    'error' => $e->getMessage(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                    'trace' => $e->getTraceAsString()
+                ]);
+                throw $e; // Re-throw to be caught by outer catch
+            }
 
             Log::info('Paper purchase created', [
                 'purchase_id' => $purchase->id,

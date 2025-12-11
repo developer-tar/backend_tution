@@ -295,6 +295,14 @@ class PaperController extends Controller
             // $totalMarks = !empty($marks) ? array_sum($marks) : count($request->questions);
             $totalMarks = null; // Temporarily set to null (column is nullable)
          
+            // Generate unique slug (include soft-deleted records in check)
+            $baseSlug = Str::slug($request->name);
+            $slug = $baseSlug;
+            $counter = 1;
+            while (Paper::withTrashed()->where('slug', $slug)->exists()) {
+                $slug = $baseSlug . '-' . $counter++;
+            }
+
             $paper = Paper::create([
                 'name' => $request->name,
                 'description' => $request->description,
@@ -305,7 +313,7 @@ class PaperController extends Controller
                 'duration_minutes' => $request->duration_minutes,
                 'total_marks' => $totalMarks,
                 'school_id' => $request->school_id ?? null,
-                'slug' => Str::slug($request->name),
+                'slug' => $slug,
             ]);
 
             /* TEMPORARILY DISABLED - Questions/Options/Answers Logic
@@ -446,7 +454,16 @@ class PaperController extends Controller
             $updateData = [];
             if ($request->has('name')) {
                 $updateData['name'] = $request->name;
-                $updateData['slug'] = Str::slug($request->name); // Update slug when name changes
+                
+                // Generate unique slug when name changes (include soft-deleted records in check)
+                $baseSlug = Str::slug($request->name);
+                $slug = $baseSlug;
+                $counter = 1;
+                // Check if slug exists for other papers (exclude current paper, include soft-deleted)
+                while (Paper::withTrashed()->where('slug', $slug)->where('id', '!=', $paper->id)->exists()) {
+                    $slug = $baseSlug . '-' . $counter++;
+                }
+                $updateData['slug'] = $slug;
             }
             if ($request->has('description')) $updateData['description'] = $request->description;
             if ($request->has('category_id')) $updateData['category_id'] = $request->category_id;

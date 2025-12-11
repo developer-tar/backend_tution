@@ -347,6 +347,10 @@ class FrontendController extends Controller
                 return sendError('Paper not found', [], 404);
             }
 
+            // Get PDF count from media collection
+            $pdfs = $paper->getMedia('paper_pdfs');
+            $pdfsCount = $pdfs->count();
+
             $tableMap = config('constants.table_map');
             $productTypeKey = array_search('papers', $tableMap) ?: 'papers';
             
@@ -362,6 +366,7 @@ class FrontendController extends Controller
                 'total_marks' => $paper->total_marks,
                 'school' => $paper->school?->name,
                 'questions_count' => $paper->questions->count(),
+                'pdfs_count' => $pdfsCount,
                 'slug' => $paper->slug,
                 'image' => $paper->getFirstMediaUrl('paper_image') ?: config('constants.dummy_image'),
                 'stripe_product_id' => $paper->stripe_product_id,
