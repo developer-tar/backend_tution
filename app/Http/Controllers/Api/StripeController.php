@@ -32,6 +32,7 @@ class StripeController extends WebhookController
     public function handleCheckoutSessionCompleted(array $payload)
     {
         try {
+            \Log::info('hello');
             $session = $payload['data']['object'];
             
             Log::info('Webhook received: checkout.session.completed', [
