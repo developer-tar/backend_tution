@@ -23,6 +23,7 @@ class StripeController extends WebhookController
      */
     public function handleWebhook(Request $request)
     {
+        \Log::info($request);
         return parent::handleWebhook($request);
     }
 
