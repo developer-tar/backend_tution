@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\Parent\PaperPurchaseListRequest;
 use App\Models\Paper;
 use App\Models\PaperPurchase;
 use App\Models\User;
@@ -166,46 +167,84 @@ class PaperPurchaseController extends Controller
     }
 
     /**
-     * Get user's purchased papers
+     * Get user's purchased papers with full paper details
+     * 
+     * @param PaperPurchaseListRequest $request
+     * @return \Illuminate\Http\JsonResponse
      */
-    public function myPurchases()
+    public function myPurchases(PaperPurchaseListRequest $request)
     {
         try {
             $user = Auth::user();
+            $validated = $request->validated();
+            $paymentStatus = $validated['status'] ?? null; // Optional filter by payment status
 
-            $purchases = PaperPurchase::with([
-                'paper:id,name,duration_minutes,total_marks',
+            $purchasesQuery = PaperPurchase::with([
+                'paper:id,name,description,format_id,category_id,price,currency,duration_minutes,total_marks',
                 'paper.format:id,name',
                 'paper.category:id,name',
-                'student:id,full_name,email', // For parent purchases
+                'student:id,first_name,last_name,email', // For parent purchases
             ])
-                ->where('user_id', $user->id)
+                ->where('user_id', $user->id);
+
+            // Apply payment status filter if provided
+            if ($paymentStatus) {
+                $purchasesQuery->where('payment_status', $paymentStatus);
+            }
+
+            $purchases = $purchasesQuery
                 ->orderBy('purchased_at', 'desc')
                 ->get()
                 ->map(function ($purchase) {
+                    $paper = $purchase->paper;
+                    
+                    // Get PDFs from media collection
+                    $pdfs = $paper->getMedia('paper_pdfs')->map(function ($media) {
+                        return [
+                            'id' => $media->id,
+                            'name' => $media->name,
+                            'file_name' => $media->file_name,
+                            'url' => $media->getUrl(),
+                            'size' => $media->size,
+                            'order' => $media->getCustomProperty('order', 0),
+                            'original_name' => $media->getCustomProperty('original_name', $media->file_name),
+                            'mime_type' => $media->mime_type,
+                            'created_at' => $media->created_at?->toDateTimeString(),
+                        ];
+                    })->sortBy('order')->values();
+
                     return [
                         'purchase_id' => $purchase->id,
                         'paper_id' => $purchase->paper_id,
-                        'paper_name' => $purchase->paper->name,
-                        'category' => $purchase->paper->category?->name,
-                        'format' => $purchase->paper->format?->name,
-                        'duration_minutes' => $purchase->paper->duration_minutes,
-                        'total_marks' => $purchase->total_marks,
-                        'score' => $purchase->score,
-                        'status' => $purchase->status,
-                        'purchased_at' => $purchase->purchased_at,
-                        'started_at' => $purchase->started_at,
-                        'completed_at' => $purchase->completed_at,
-                        'purchased_by' => $purchase->purchased_by,
-                        'student_name' => $purchase->student?->full_name, // For parent purchases
-                        'student_email' => $purchase->student?->email,
-                        'image' => $purchase->paper->getFirstMediaUrl('paper_image') ?: config('constants.dummy_image'),
+                        'paper_name' => $paper->name ?? 'N/A',
+                        'paper_description' => $paper->description ?? null,
+                        'paper_format' => $paper->format?->name ?? null,
+                        'paper_category' => $paper->category?->name ?? null,
+                        'paper_price' => $paper->price ? (float) $paper->price : null,
+                        'paper_currency' => $paper->currency ?? null,
+                        'paper_image' => $paper->getFirstMediaUrl('paper_image') ?: config('constants.dummy_image'),
+                        'paper_pdfs' => $pdfs,
+                        'paper_duration_minutes' => $paper->duration_minutes ?? null,
+                        'paper_total_marks' => $paper->total_marks ?? null,
+                        'amount' => $purchase->amount ? (float) $purchase->amount : null,
+                        'currency' => $purchase->currency ?? 'gbp',
+                        'payment_status' => $purchase->payment_status ?? null,
+                        'purchased_at' => $purchase->purchased_at?->toDateTimeString(),
+                        'purchased_by' => $purchase->purchased_by ?? 'student',
+                        'student_id' => $purchase->student_id,
+                        'student_name' => $purchase->student?->full_name ?? null,
+                        'student_email' => $purchase->student?->email ?? null,
+                        'status' => $purchase->status ?? null,
+                        'score' => $purchase->score ?? null,
+                        'started_at' => $purchase->started_at?->toDateTimeString(),
+                        'completed_at' => $purchase->completed_at?->toDateTimeString(),
                     ];
                 });
 
             return sendResponse($purchases, 'Purchased papers fetched successfully');
 
         } catch (Exception $e) {
+            Log::error("Failed to fetch user purchases: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
             return errorLog("Failed to fetch user purchases: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }

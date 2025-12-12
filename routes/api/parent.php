@@ -42,3 +42,6 @@ Route::get('subscriptions', [ParentStudentCourseController::class, 'getSubscript
 
 // Paper checkout for parents
 Route::post('paper/checkout', [PaperPurchaseController::class, 'parentCheckout']);
+
+// Paper purchases for parents
+Route::get('paper-purchases', [PaperPurchaseController::class, 'myPurchases']); // Get parent's purchased papers

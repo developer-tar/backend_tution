@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\Admin\Assign\MockExamController;
 use App\Http\Controllers\Api\Admin\Assign\PaperController;
 use App\Http\Controllers\Api\Admin\MasterFormController;
 use App\Http\Controllers\Api\Admin\ParentController;
+use App\Http\Controllers\Api\Admin\PaperPurchaseController;
 use App\Http\Controllers\Api\Admin\StudentController;
 use Illuminate\Support\Facades\Route;
 
@@ -117,3 +118,7 @@ Route::put('student/{student}', [StudentController::class, 'update']); // Update
 Route::patch('student/{student}', [StudentController::class, 'update']); // Update student (partial)
 Route::delete('student/{student}', [StudentController::class, 'destroy']); // Delete student
 //end student management routing
+
+//start paper purchase management routing
+Route::get('paper-purchases', [PaperPurchaseController::class, 'index']); // Get aggregated paper purchases list
+//end paper purchase management routing
