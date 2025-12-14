@@ -37,6 +37,13 @@ return [
         'product_id' => env('PRODUCT_ID'),
         'sk_test' => env('STRIPE_SECRET'),
         'pk_test' => env('STRIPE_KEY'),
-    ]
+    ],
+
+    'google_document_ai' => [
+        'credentials_path' => env('GOOGLE_APPLICATION_CREDENTIALS'),
+        'project_id' => env('GOOGLE_CLOUD_PROJECT_ID'),
+        'location' => env('GOOGLE_DOCUMENT_AI_LOCATION', 'us'),
+        'processor_id' => env('GOOGLE_DOCUMENT_AI_PROCESSOR_ID'),
+    ],
 
 ];

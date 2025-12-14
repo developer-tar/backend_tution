@@ -9,6 +9,7 @@ use App\Http\Requests\Api\Admin\TogglePaperStatusRequest;
 use App\Jobs\PaperPrice;
 use App\Jobs\UploadPaperImageJob;
 use App\Jobs\UpdatePaperStripePrice;
+use App\Jobs\ProcessPaperPdfJob;
 use App\Models\Paper;
 use App\Models\PaperAnswer;
 use App\Models\MockExamCategory;
@@ -404,6 +405,27 @@ class PaperController extends Controller
                             'media_id' => $media->id,
                             'file_name' => $media->file_name
                         ]);
+
+                        // Google Document AI se questions/answers extract karein
+                        // PDF ka actual path get karein
+                        // $pdfPath = $media->getPath();
+                        
+                        // if (file_exists($pdfPath)) {
+                        //     Log::info("Dispatching ProcessPaperPdfJob for PDF extraction", [
+                        //         'paper_id' => $paper->id,
+                        //         'media_id' => $media->id,
+                        //         'pdf_path' => $pdfPath
+                        //     ]);
+                            
+                        //     // Background job mein PDF process karein
+                        //     ProcessPaperPdfJob::dispatch($paper->id, $pdfPath, $media->id);
+                        // } else {
+                        //     Log::warning("PDF file path not found for processing", [
+                        //         'paper_id' => $paper->id,
+                        //         'media_id' => $media->id,
+                        //         'expected_path' => $pdfPath
+                        //     ]);
+                        // }
                     }
                     
                     Log::info("All PDF files uploaded successfully", [
@@ -651,6 +673,26 @@ class PaperController extends Controller
                             'media_id' => $media->id,
                             'file_name' => $media->file_name
                         ]);
+
+                        // Google Document AI se questions/answers extract karein
+                        // $pdfPath = $media->getPath();
+                        
+                        // if (file_exists($pdfPath)) {
+                        //     Log::info("Dispatching ProcessPaperPdfJob for PDF extraction (update)", [
+                        //         'paper_id' => $paper->id,
+                        //         'media_id' => $media->id,
+                        //         'pdf_path' => $pdfPath
+                        //     ]);
+                            
+                        //     // Background job mein PDF process karein
+                        //     ProcessPaperPdfJob::dispatch($paper->id, $pdfPath, $media->id);
+                        // } else {
+                        //     Log::warning("PDF file path not found for processing (update)", [
+                        //         'paper_id' => $paper->id,
+                        //         'media_id' => $media->id,
+                        //         'expected_path' => $pdfPath
+                        //     ]);
+                        // }
                     }
                     
                     Log::info("All PDF files uploaded successfully in update", [

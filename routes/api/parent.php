@@ -2,7 +2,9 @@
 
 use App\Http\Controllers\Api\MockExamPurchaseController;
 use App\Http\Controllers\Api\PaperPurchaseController;
+use App\Http\Controllers\Api\Parent\BillingInformationController;
 use App\Http\Controllers\Api\Parent\ParentStudentCourseController;
+use App\Http\Controllers\Api\Parent\RequestPaperToHomeController;
 use App\Http\Controllers\Api\Parent\StudentController;
 use App\Http\Controllers\Api\PaymentController;
 use Illuminate\Support\Facades\Route;
@@ -45,3 +47,12 @@ Route::post('paper/checkout', [PaperPurchaseController::class, 'parentCheckout']
 
 // Paper purchases for parents
 Route::get('paper-purchases', [PaperPurchaseController::class, 'myPurchases']); // Get parent's purchased papers
+
+// Billing Information Routes
+Route::get('billing-information', [BillingInformationController::class, 'index']);
+Route::post('billing-information', [BillingInformationController::class, 'store']);
+Route::put('billing-information', [BillingInformationController::class, 'update']);
+Route::delete('billing-information/{id}', [BillingInformationController::class, 'destroy']);
+
+// Paper Request to Home Route
+Route::post('request-paper-to-home', [RequestPaperToHomeController::class, 'store']);
