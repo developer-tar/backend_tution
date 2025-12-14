@@ -26,9 +26,9 @@ class AddToCartRequest extends FormRequest
             'product_id' => ['required', "exists:{$productTable},id"],
             'quantity' => 'required|integer|min:1',
         ];
-        if ($productType === 'course') {
-            $rules['price_id'] = ['required', 'exists:course_prices,stripe_price_id'];
-        }
+        // if ($productType === 'course') {
+        //     $rules['price_id'] = ['required', 'exists:course_prices,stripe_price_id'];
+        // }
         return $rules;
     }
     public function messages(): array
