@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\Parent\StoreBillingInformationRequest;
 use App\Http\Requests\Api\Parent\UpdateBillingInformationRequest;
 use App\Models\BillingInformation;
+use App\Models\RequestedPaperToHome;
 use Exception;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -114,6 +115,19 @@ class BillingInformationController extends Controller
             $billingInformation = BillingInformation::where('id', $id)
                 ->where('parent_id', $parentId)
                 ->firstOrFail();
+
+            // Check if billing information is being used in requested_papers_to_home table
+            $isInUse = RequestedPaperToHome::withTrashed()
+                ->where('billing_information_id', $id)
+                ->exists();
+
+            if ($isInUse) {
+                return sendError(
+                    'This billing information cannot be deleted because it is currently being used in a paper request. Please remove or update the paper request first.',
+                    [],
+                    422
+                );
+            }
 
             $billingInformation->delete();
 

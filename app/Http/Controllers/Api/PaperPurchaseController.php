@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\Parent\PaperPurchaseListRequest;
 use App\Models\Paper;
 use App\Models\PaperPurchase;
+use App\Models\PaperRequestActivityLog;
+use App\Models\RequestedPaperToHome;
 use App\Models\User;
 use Exception;
 use Illuminate\Http\Request;
@@ -194,52 +196,102 @@ class PaperPurchaseController extends Controller
 
             $purchases = $purchasesQuery
                 ->orderBy('purchased_at', 'desc')
-                ->get()
-                ->map(function ($purchase) {
-                    $paper = $purchase->paper;
-                    
-                    // Get PDFs from media collection
-                    $pdfs = $paper->getMedia('paper_pdfs')->map(function ($media) {
-                        return [
-                            'id' => $media->id,
-                            'name' => $media->name,
-                            'file_name' => $media->file_name,
-                            'url' => $media->getUrl(),
-                            'size' => $media->size,
-                            'order' => $media->getCustomProperty('order', 0),
-                            'original_name' => $media->getCustomProperty('original_name', $media->file_name),
-                            'mime_type' => $media->mime_type,
-                            'created_at' => $media->created_at?->toDateTimeString(),
-                        ];
-                    })->sortBy('order')->values();
+                ->get();
 
+            // Get all paper IDs from purchases
+            $paperIds = $purchases->pluck('paper_id')->unique()->toArray();
+
+            // Fetch all requested papers to home for these papers and this user in one query (optimize N+1)
+            $requestedPapers = RequestedPaperToHome::withTrashed()
+                ->where('parent_id', $user->id)
+                ->whereIn('paper_id', $paperIds)
+                ->get()
+                ->keyBy('paper_id'); // Key by paper_id for easy lookup
+
+            // Fetch all activity logs for these papers and this user in one query (optimize N+1)
+            $activityLogs = PaperRequestActivityLog::with(['billingInformation'])
+                ->where('user_id', $user->id)
+                ->whereIn('paper_id', $paperIds)
+                ->whereIn('action', ['created', 'updated', 'restored']) // Only Request Home actions
+                ->orderBy('created_at', 'desc')
+                ->get()
+                ->groupBy('paper_id'); // Group by paper_id for easy lookup
+
+            $purchases = $purchases->map(function ($purchase) use ($activityLogs, $requestedPapers) {
+                $paper = $purchase->paper;
+                
+                // Get PDFs from media collection
+                $pdfs = $paper->getMedia('paper_pdfs')->map(function ($media) {
                     return [
-                        'purchase_id' => $purchase->id,
-                        'paper_id' => $purchase->paper_id,
-                        'paper_name' => $paper->name ?? 'N/A',
-                        'paper_description' => $paper->description ?? null,
-                        'paper_format' => $paper->format?->name ?? null,
-                        'paper_category' => $paper->category?->name ?? null,
-                        'paper_price' => $paper->price ? (float) $paper->price : null,
-                        'paper_currency' => $paper->currency ?? null,
-                        'paper_image' => $paper->getFirstMediaUrl('paper_image') ?: config('constants.dummy_image'),
-                        'paper_pdfs' => $pdfs,
-                        'paper_duration_minutes' => $paper->duration_minutes ?? null,
-                        'paper_total_marks' => $paper->total_marks ?? null,
-                        'amount' => $purchase->amount ? (float) $purchase->amount : null,
-                        'currency' => $purchase->currency ?? 'gbp',
-                        'payment_status' => $purchase->payment_status ?? null,
-                        'purchased_at' => $purchase->purchased_at?->toDateTimeString(),
-                        'purchased_by' => $purchase->purchased_by ?? 'student',
-                        'student_id' => $purchase->student_id,
-                        'student_name' => $purchase->student?->full_name ?? null,
-                        'student_email' => $purchase->student?->email ?? null,
-                        'status' => $purchase->status ?? null,
-                        'score' => $purchase->score ?? null,
-                        'started_at' => $purchase->started_at?->toDateTimeString(),
-                        'completed_at' => $purchase->completed_at?->toDateTimeString(),
+                        'id' => $media->id,
+                        'name' => $media->name,
+                        'file_name' => $media->file_name,
+                        'url' => $media->getUrl(),
+                        'size' => $media->size,
+                        'order' => $media->getCustomProperty('order', 0),
+                        'original_name' => $media->getCustomProperty('original_name', $media->file_name),
+                        'mime_type' => $media->mime_type,
+                        'created_at' => $media->created_at?->toDateTimeString(),
                     ];
-                });
+                })->sortBy('order')->values();
+
+                // Get activity logs for this paper
+                $paperActivityLogs = $activityLogs->get($purchase->paper_id, collect())->map(function ($log) {
+                    $billingInfo = $log->billingInformation;
+                    return [
+                        'id' => $log->id,
+                        'action' => $log->action,
+                        'description' => $log->description,
+                        'billing_information' => $billingInfo ? [
+                            'id' => $billingInfo->id,
+                            'address_line1' => $billingInfo->address_line1,
+                            'address_line2' => $billingInfo->address_line2,
+                            'city' => $billingInfo->city,
+                            'state' => $billingInfo->state,
+                            'postal_code' => $billingInfo->postal_code,
+                            'country' => $billingInfo->country,
+                            'phone' => $billingInfo->phone,
+                        ] : null,
+                        'old_values' => $log->old_values,
+                        'new_values' => $log->new_values,
+                        'created_at' => $log->created_at?->toDateTimeString(),
+                        'ip_address' => $log->ip_address,
+                    ];
+                })->values();
+
+                // Get billing_information_id from requested_papers_to_home table
+                $requestedPaper = $requestedPapers->get($purchase->paper_id);
+                $billingInformationId = $requestedPaper ? $requestedPaper->billing_information_id : null;
+
+                return [
+                    'purchase_id' => $purchase->id,
+                    'paper_id' => $purchase->paper_id,
+                    'paper_name' => $paper->name ?? 'N/A',
+                    'paper_description' => $paper->description ?? null,
+                    'paper_format' => $paper->format?->name ?? null,
+                    'paper_category' => $paper->category?->name ?? null,
+                    'paper_price' => $paper->price ? (float) $paper->price : null,
+                    'paper_currency' => $paper->currency ?? null,
+                    'paper_image' => $paper->getFirstMediaUrl('paper_image') ?: config('constants.dummy_image'),
+                    'paper_pdfs' => $pdfs,
+                    'paper_duration_minutes' => $paper->duration_minutes ?? null,
+                    'paper_total_marks' => $paper->total_marks ?? null,
+                    'amount' => $purchase->amount ? (float) $purchase->amount : null,
+                    'currency' => $purchase->currency ?? 'gbp',
+                    'payment_status' => $purchase->payment_status ?? null,
+                    'purchased_at' => $purchase->purchased_at?->toDateTimeString(),
+                    'purchased_by' => $purchase->purchased_by ?? 'student',
+                    'student_id' => $purchase->student_id,
+                    'student_name' => $purchase->student?->full_name ?? null,
+                    'student_email' => $purchase->student?->email ?? null,
+                    'status' => $purchase->status ?? null,
+                    'score' => $purchase->score ?? null,
+                    'started_at' => $purchase->started_at?->toDateTimeString(),
+                    'completed_at' => $purchase->completed_at?->toDateTimeString(),
+                    'billing_information_id' => $billingInformationId, // Added billing_information_id
+                    'request_home_activity_logs' => $paperActivityLogs, // Added activity logs
+                ];
+            });
 
             return sendResponse($purchases, 'Purchased papers fetched successfully');
 
