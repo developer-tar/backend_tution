@@ -26,9 +26,28 @@ class RequestPaperToHomeRequest extends FormRequest
      */
     public function rules(): array
     {
+        $parentId = auth()->id();
+        
         return [
-            'paper_id' => ['required', 'integer', 'exists:papers,id'],
-            'billing_information_id' => ['required', 'integer', 'exists:billing_informations,id'],
+            'paper_id' => [
+                'required',
+                'integer',
+                'exists:papers,id',
+            ],
+            'billing_information_id' => [
+                'required',
+                'integer',
+                'exists:billing_informations,id',
+                function ($attribute, $value, $fail) use ($parentId) {
+                    $billingInfo = BillingInformation::where('id', $value)
+                        ->where('parent_id', $parentId)
+                        ->first();
+                    
+                    if (!$billingInfo) {
+                        $fail('The selected billing information does not belong to you.');
+                    }
+                },
+            ],
         ];
     }
 
@@ -67,26 +86,20 @@ class RequestPaperToHomeRequest extends FormRequest
                 return;
             }
 
-            // Check if billing information exists and belongs to parent
+            // Note: Billing information ownership is already validated in rules() method
+            // This check is redundant but kept for additional safety
             $billingInfo = BillingInformation::where('id', $billingInfoId)
                 ->where('parent_id', $parentId)
                 ->first();
 
             if (!$billingInfo) {
-                $validator->errors()->add('billing_information_id', 'Billing information not found.');
+                $validator->errors()->add('billing_information_id', 'Billing information not found or does not belong to you.');
                 return;
             }
 
-            // Check for duplicate request (including soft-deleted records)
-            $duplicateRequest = RequestedPaperToHome::withTrashed()
-                ->where('parent_id', $parentId)
-                ->where('paper_id', $paperId)
-                ->exists();
-
-            if ($duplicateRequest) {
-                $validator->errors()->add('paper_id', 'Already requested. We are processing your request.');
-                return;
-            }
+            // Note: Duplicate requests are now allowed - they will update the existing record
+            // This allows parents to change their billing information for the same paper request
+            // The controller handles the update logic
         });
     }
 
