@@ -53,6 +53,14 @@ Route::get('paper/view', [FrontendController::class, 'paperView']);
 Route::get('paper/{slug}/details', [FrontendController::class, 'paperDetails']);
 Route::get('paper/categories', [FrontendController::class, 'paperCategories']);
 
+// Announcement public routes
+Route::get('announcements', [FrontendController::class, 'announcementView']);
+Route::get('announcements/{id}', [FrontendController::class, 'announcementDetails']);
+
+// Classes and Modes APIs
+Route::get('classes', [FrontendController::class, 'getActiveClasses']);
+Route::get('modes', [FrontendController::class, 'getActiveModes']);
+
 // Common webhook for both subscriptions and mock exam purchases
 Route::post('stripe/webhook', [StripeController::class, 'handleWebhook']);
 

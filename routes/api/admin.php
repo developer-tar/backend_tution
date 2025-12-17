@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\Admin\MasterFormController;
 use App\Http\Controllers\Api\Admin\ParentController;
 use App\Http\Controllers\Api\Admin\PaperPurchaseController;
 use App\Http\Controllers\Api\Admin\StudentController;
+use App\Http\Controllers\Api\Admin\AnnouncementController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -122,3 +123,10 @@ Route::delete('student/{student}', [StudentController::class, 'destroy']); // De
 //start paper purchase management routing
 Route::get('paper-purchases', [PaperPurchaseController::class, 'index']); // Get aggregated paper purchases list
 //end paper purchase management routing
+
+//start announcement management routing
+Route::resource('announcements', AnnouncementController::class);
+Route::patch('announcements/{announcement}/toggle-status', [AnnouncementController::class, 'toggleStatus']);
+Route::patch('announcements/{announcement}/toggle-pinned', [AnnouncementController::class, 'togglePinned']);
+Route::post('announcements/{announcement}/restore', [AnnouncementController::class, 'restore']);
+//end announcement management routing
