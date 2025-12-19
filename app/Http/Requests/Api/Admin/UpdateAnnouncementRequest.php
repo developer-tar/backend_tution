@@ -26,18 +26,34 @@ class UpdateAnnouncementRequest extends FormRequest
             'title' => ['sometimes', 'required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:500'],
             'content' => ['nullable', 'string'],
+            'message' => ['nullable', 'string'],
+            'priority' => ['nullable', 'string', 'in:general,important,urgent,maintenance'],
             'type' => ['nullable', 'string', 'in:general,important,urgent,maintenance'],
             'status' => ['nullable', 'integer', 'in:1,2,3'], // 1=Pending, 2=Approved, 3=Rejected
+            'start_date_time' => ['nullable', 'date'],
+            'end_date_time' => ['nullable', 'date', 'after:start_date_time'],
             'published_at' => ['nullable', 'date'],
             'expires_at' => ['nullable', 'date', 'after:published_at'],
+            'target_audience' => ['nullable', 'array'],
+            'target_audience.*' => ['string', 'in:admin,student,parent,tutor,school'],
             'target_roles' => ['nullable', 'array'],
             'target_roles.*' => ['string', 'in:Admin,Student,Parent,Tutor,School'],
+            'class_ids' => ['nullable', 'array'],
+            'class_ids.*' => ['string'],
             'target_years' => ['nullable', 'array'],
-            'target_years.*' => ['integer', 'exists:years,id'],
+            'target_years.*' => ['string'],
+            'course_time_slot_ids' => ['nullable', 'array'],
+            'course_time_slot_ids.*' => ['integer', 'exists:course_time_slots,id'],
             'is_pinned' => ['nullable', 'boolean'],
             'announcement_image' => ['nullable', 'image', 'max:10240'], // Max 10MB - single image
             'announcement_images' => ['nullable', 'array'], // Multiple images
             'announcement_images.*' => ['image', 'max:10240'], // Max 10MB per image
+            'announcement_pdf' => ['nullable', 'mimes:pdf', 'max:10240'], // Max 10MB - single PDF
+            'announcement_pdfs' => ['nullable', 'array'], // Multiple PDFs
+            'announcement_pdfs.*' => ['mimes:pdf', 'max:10240'], // Max 10MB per PDF
+            'announcement_timetable' => ['nullable', 'mimes:pdf,doc,docx,xls,xlsx', 'max:10240'], // Max 10MB - single timetable
+            'announcement_timetables' => ['nullable', 'array'], // Multiple timetables
+            'announcement_timetables.*' => ['mimes:pdf,doc,docx,xls,xlsx', 'max:10240'], // Max 10MB per timetable
         ];
     }
 
@@ -47,22 +63,42 @@ class UpdateAnnouncementRequest extends FormRequest
             'title.required' => 'Announcement title is required.',
             'title.max' => 'Announcement title must not exceed 255 characters.',
             'description.max' => 'Description must not exceed 500 characters.',
+            'priority.in' => 'Priority must be one of: general, important, urgent, maintenance.',
             'type.in' => 'Type must be one of: general, important, urgent, maintenance.',
             'status.in' => 'Status must be one of: 1 (Pending), 2 (Approved), 3 (Rejected).',
+            'start_date_time.date' => 'Start date must be a valid date.',
+            'end_date_time.date' => 'End date must be a valid date.',
+            'end_date_time.after' => 'End date must be after start date.',
             'published_at.date' => 'Published date must be a valid date.',
             'expires_at.date' => 'Expires date must be a valid date.',
             'expires_at.after' => 'Expires date must be after published date.',
+            'target_audience.array' => 'Target audiences must be an array.',
+            'target_audience.*.in' => 'Each target audience must be one of: admin, student, parent, tutor, school.',
             'target_roles.array' => 'Target roles must be an array.',
             'target_roles.*.in' => 'Each target role must be one of: Admin, Student, Parent, Tutor, School.',
+            'class_ids.array' => 'Classes must be an array.',
+            'class_ids.*.string' => 'Each Class name must be a string.',
             'target_years.array' => 'Target years must be an array.',
-            'target_years.*.integer' => 'Each target year must be an integer.',
-            'target_years.*.exists' => 'One or more selected years do not exist.',
+            'target_years.*.string' => 'Each class name must be a string.',
+            'course_time_slot_ids.array' => 'Course time slots must be an array.',
+            'course_time_slot_ids.*.integer' => 'Each course time slot must be an integer.',
+            'course_time_slot_ids.*.exists' => 'One or more selected course time slots do not exist.',
             'is_pinned.boolean' => 'Is pinned must be a boolean value.',
             'announcement_image.image' => 'The uploaded file must be an image.',
             'announcement_image.max' => 'Announcement image size must not exceed 10MB.',
             'announcement_images.array' => 'Announcement images must be an array.',
             'announcement_images.*.image' => 'Each uploaded file must be an image.',
             'announcement_images.*.max' => 'Each announcement image size must not exceed 10MB.',
+            'announcement_pdf.mimes' => 'The uploaded file must be a PDF.',
+            'announcement_pdf.max' => 'PDF size must not exceed 10MB.',
+            'announcement_pdfs.array' => 'PDFs must be an array.',
+            'announcement_pdfs.*.mimes' => 'Each uploaded file must be a PDF.',
+            'announcement_pdfs.*.max' => 'Each PDF size must not exceed 10MB.',
+            'announcement_timetable.mimes' => 'The uploaded file must be PDF, DOC, DOCX, XLS, or XLSX.',
+            'announcement_timetable.max' => 'Timetable size must not exceed 10MB.',
+            'announcement_timetables.array' => 'Timetables must be an array.',
+            'announcement_timetables.*.mimes' => 'Each timetable must be PDF, DOC, DOCX, XLS, or XLSX.',
+            'announcement_timetables.*.max' => 'Each timetable size must not exceed 10MB.',
         ];
     }
 }

@@ -1,4 +1,5 @@
 <?php
+
 use App\Http\Controllers\Api\Admin\Assign\MockExamController;
 use App\Http\Controllers\Api\Admin\Assign\PaperController;
 use App\Http\Controllers\Api\PaperPurchaseController;
@@ -82,3 +83,7 @@ Route::post('dashboard/subject', [DashboardController::class, 'getSubjectDashboa
 
 //hierarchical data routes
 Route::get('hierarchical-data', [AssignmentController::class, 'getHierarchicalData']);
+
+//announcements routes
+Route::get('announcements', [\App\Http\Controllers\Api\FrontendController::class, 'announcementView']);
+Route::get('announcements/{id}', [\App\Http\Controllers\Api\FrontendController::class, 'announcementDetails']);

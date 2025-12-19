@@ -125,7 +125,9 @@ Route::get('paper-purchases', [PaperPurchaseController::class, 'index']); // Get
 //end paper purchase management routing
 
 //start announcement management routing
-Route::resource('announcements', AnnouncementController::class);
+Route::get('announcements/course-time-slots/list', [AnnouncementController::class, 'getCourseTimeSlots']);
+Route::get('announcements/class-names/list', [AnnouncementController::class, 'getClassNames']);
+Route::resource('announcements', AnnouncementController::class)->parameters(['announcements' => 'id']);
 Route::patch('announcements/{announcement}/toggle-status', [AnnouncementController::class, 'toggleStatus']);
 Route::patch('announcements/{announcement}/toggle-pinned', [AnnouncementController::class, 'togglePinned']);
 Route::post('announcements/{announcement}/restore', [AnnouncementController::class, 'restore']);

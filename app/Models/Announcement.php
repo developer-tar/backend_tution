@@ -22,6 +22,7 @@ class Announcement extends Model implements HasMedia
         'created_by',
         'target_roles',
         'target_years',
+        'course_time_slot_ids',
         'is_pinned',
     ];
 
@@ -31,6 +32,7 @@ class Announcement extends Model implements HasMedia
         'expires_at' => 'datetime',
         'target_roles' => 'array',
         'target_years' => 'array',
+        'course_time_slot_ids' => 'array',
         'is_pinned' => 'boolean',
         'created_by' => 'integer',
     ];
