@@ -402,27 +402,74 @@ class FrontendController extends Controller
     {
         try {
             $user = Auth::user();
-            $userRoles = $user ? $user->roles->pluck('name')->toArray() : [];
-            $userYearIds = [];
 
-            // Get year IDs based on user role
+            // Safely get user roles with null checks
+            $userRoles = [];
             if ($user) {
-                if (in_array(config('constants.roles.STUDENT'), $userRoles)) {
-                    // For students: get their year_id
-                    $studentDetail = StudentDetail::where('child_id', $user->id)->first();
-                    if ($studentDetail && $studentDetail->year_id) {
-                        $userYearIds[] = $studentDetail->year_id;
+                try {
+                    if ($user->relationLoaded('roles')) {
+                        $userRoles = $user->roles->pluck('name')->toArray();
+                    } else {
+                        // Query roles directly, accounting for soft deletes in pivot table
+                        $userRoles = $user->roles()
+                            ->wherePivotNull('deleted_at')
+                            ->pluck('name')
+                            ->toArray();
                     }
-                } elseif (in_array(config('constants.roles.PARENT'), $userRoles)) {
-                    // For parents: get all their students' year_ids
-                    $studentDetails = StudentDetail::where('parent_id', $user->id)
-                        ->whereNotNull('year_id')
-                        ->pluck('year_id')
-                        ->unique()
-                        ->toArray();
-                    $userYearIds = array_values($studentDetails);
+                } catch (\Exception $e) {
+                    Log::warning("Failed to load user roles for user {$user->id}: " . $e->getMessage());
+                    $userRoles = [];
                 }
-                // For admins: they see all announcements, so no year filtering needed
+            }
+
+            $userCourseTimeSlotIds = [];
+
+            // Get course time slot IDs based on user role
+            if ($user) {
+                $isAdmin = in_array(config('constants.roles.ADMIN'), $userRoles);
+
+                if (!$isAdmin) {
+                    try {
+                        if (in_array(config('constants.roles.STUDENT'), $userRoles)) {
+                            // For students: get their enrolled courses and their time slots
+                            $studentRecords = \App\Models\ManageStudentRecord::where('buyer_id', $user->id)
+                                ->whereNotNull('course_id')
+                                ->pluck('course_id')
+                                ->unique();
+
+                            if ($studentRecords->isNotEmpty()) {
+                                $userCourseTimeSlotIds = CourseTimeSlot::whereIn('course_id', $studentRecords)
+                                    ->whereNull('deleted_at')
+                                    ->pluck('id')
+                                    ->toArray();
+                            }
+                        } elseif (in_array(config('constants.roles.PARENT'), $userRoles)) {
+                            // For parents: get all their students' enrolled courses and their time slots
+                            $studentDetails = StudentDetail::where('parent_id', $user->id)
+                                ->pluck('child_id')
+                                ->unique();
+
+                            if ($studentDetails->isNotEmpty()) {
+                                $studentRecords = \App\Models\ManageStudentRecord::whereIn('buyer_id', $studentDetails)
+                                    ->whereNotNull('course_id')
+                                    ->pluck('course_id')
+                                    ->unique();
+
+                                if ($studentRecords->isNotEmpty()) {
+                                    $userCourseTimeSlotIds = CourseTimeSlot::whereIn('course_id', $studentRecords)
+                                        ->whereNull('deleted_at')
+                                        ->pluck('id')
+                                        ->toArray();
+                                }
+                            }
+                        }
+                    } catch (\Exception $e) {
+                        Log::warning("Failed to fetch course time slots for user {$user->id}: " . $e->getMessage());
+                        // Continue with empty array - user will see announcements with no course restrictions
+                        $userCourseTimeSlotIds = [];
+                    }
+                }
+                // For admins: they see all announcements, so no course time slot filtering needed
             }
 
             $query = Announcement::with('creator:id,first_name,last_name,email')
@@ -438,79 +485,234 @@ class FrontendController extends Controller
             // Filter announcements based on target roles (Admin, Student, Parent)
             if (!empty($userRoles)) {
                 $query->where(function ($q) use ($userRoles) {
-                    $q->whereNull('target_roles');
+                    $q->whereNull('target_roles')
+                        ->orWhere('target_roles', '[]')
+                        ->orWhere('target_roles', '');
                     foreach ($userRoles as $role) {
-                        $q->orWhereJsonContains('target_roles', $role);
+                        // Use both JSON contains and LIKE for compatibility
+                        $q->orWhere(function ($subQ) use ($role) {
+                            $subQ->whereJsonContains('target_roles', $role)
+                                ->orWhere('target_roles', 'like', '%"' . $role . '"%')
+                                ->orWhere('target_roles', 'like', '%' . $role . '%');
+                        });
                     }
                 });
             } else {
                 // If user is not authenticated, show only announcements with no target roles
                 $query->where(function ($q) {
                     $q->whereNull('target_roles')
-                        ->orWhereJsonLength('target_roles', 0);
+                        ->orWhere('target_roles', '[]')
+                        ->orWhere('target_roles', '');
                 });
             }
 
-            // Filter by target years (grades) - only for students and parents
-            if (!empty($userYearIds) && (in_array(config('constants.roles.STUDENT'), $userRoles) || in_array(config('constants.roles.PARENT'), $userRoles))) {
-                $query->where(function ($q) use ($userYearIds) {
-                    // Show announcements with no year restriction OR announcements matching user's year(s)
-                    $q->whereNull('target_years')
-                        ->orWhereJsonLength('target_years', 0);
-                    foreach ($userYearIds as $yearId) {
-                        $q->orWhereJsonContains('target_years', (int)$yearId);
-                    }
-                });
-            } elseif (empty($userRoles) || !in_array(config('constants.roles.ADMIN'), $userRoles)) {
-                // For non-authenticated users or non-admin users without year data, show only announcements with no year restriction
-                $query->where(function ($q) {
-                    $q->whereNull('target_years')
-                        ->orWhereJsonLength('target_years', 0);
-                });
+            // Filter by course time slots - only for students and parents (not admins)
+            $isAdmin = !empty($userRoles) && in_array(config('constants.roles.ADMIN'), $userRoles);
+            if (!$isAdmin) {
+                if (!empty($userCourseTimeSlotIds)) {
+                    // For students and parents: show announcements with no course time slot restriction OR 
+                    // announcements matching their enrolled course time slots
+                    $query->where(function ($q) use ($userCourseTimeSlotIds) {
+                        // Show announcements with no course time slot restriction (null, empty, or empty array)
+                        $q->where(function ($subQ) {
+                            $subQ->whereNull('course_time_slot_ids')
+                                ->orWhere('course_time_slot_ids', '[]')
+                                ->orWhere('course_time_slot_ids', '');
+                        });
+
+                        // OR show announcements that match any of the user's course time slots
+                        // Use LIKE pattern matching which is more compatible across database versions
+                        foreach ($userCourseTimeSlotIds as $slotId) {
+                            $intSlotId = (int)$slotId;
+                            $q->orWhere(function ($subQ) use ($intSlotId) {
+                                // Use LIKE for JSON array search (works on all MySQL/MariaDB versions)
+                                $subQ->where('course_time_slot_ids', 'like', '%"' . $intSlotId . '"%')
+                                    ->orWhere('course_time_slot_ids', 'like', '[' . $intSlotId . ',%')
+                                    ->orWhere('course_time_slot_ids', 'like', '%,' . $intSlotId . ',%')
+                                    ->orWhere('course_time_slot_ids', 'like', '%,' . $intSlotId . ']')
+                                    ->orWhere('course_time_slot_ids', 'like', '[' . $intSlotId . ']');
+                            });
+                        }
+                    });
+                } else {
+                    // For students/parents without enrolled courses: show only announcements with no course time slot restriction
+                    $query->where(function ($q) {
+                        $q->whereNull('course_time_slot_ids')
+                            ->orWhere('course_time_slot_ids', '[]')
+                            ->orWhere('course_time_slot_ids', '');
+                    });
+                }
             }
-            // Admins see all announcements regardless of year restrictions
+            // Admins see all announcements regardless of course time slot restrictions
 
             $perPage = $request->integer('per_page', 10);
             $perPage = min($perPage, 50);
 
             $announcements = $query->paginate($perPage)->through(function ($announcement) {
-                // Get all images for this announcement
-                $allImages = $announcement->getMedia('announcement_image')->map(function ($media) {
-                    return [
-                        'id' => $media->id,
-                        'url' => $media->getUrl(),
-                        'name' => $media->name,
-                        'size' => $media->size,
-                        'mime_type' => $media->mime_type,
-                    ];
-                })->toArray();
+                try {
+                    // Get all images for this announcement with error handling
+                    $allImages = [];
+                    try {
+                        $allImages = $announcement->getMedia('announcement_image')->map(function ($media) {
+                            try {
+                                return [
+                                    'id' => $media->id,
+                                    'url' => $media->getUrl(),
+                                    'name' => $media->name,
+                                    'size' => $media->size,
+                                    'mime_type' => $media->mime_type,
+                                ];
+                            } catch (\Exception $e) {
+                                Log::warning("Error processing image media: " . $e->getMessage());
+                                return null;
+                            }
+                        })->filter()->values()->toArray();
+                    } catch (\Exception $e) {
+                        Log::warning("Error fetching announcement images: " . $e->getMessage());
+                        $allImages = [];
+                    }
 
-                return [
-                    'id' => $announcement->id,
-                    'title' => $announcement->title,
-                    'description' => $announcement->description,
-                    'content' => $announcement->content,
-                    'type' => $announcement->type,
-                    'is_pinned' => $announcement->is_pinned,
-                    'published_at' => $announcement->published_at?->format('Y-m-d H:i:s'),
-                    'expires_at' => $announcement->expires_at?->format('Y-m-d H:i:s'),
-                    'target_roles' => $announcement->target_roles,
-                    'target_years' => $announcement->target_years,
-                    'image' => $announcement->getFirstMediaUrl('announcement_image') ?: null, // First image for backward compatibility
-                    'images' => $allImages, // All images
-                    'images_count' => count($allImages),
-                    'created_by' => $announcement->creator ? [
-                        'id' => $announcement->creator->id,
-                        'name' => $announcement->creator->full_name,
-                        'email' => $announcement->creator->email,
-                    ] : null,
-                    'created_at' => $announcement->created_at->format('Y-m-d H:i:s'),
-                ];
+                    // Get all PDFs for this announcement with error handling
+                    $allPdfs = [];
+                    try {
+                        $allPdfs = $announcement->getMedia('announcement_pdf')->map(function ($media) {
+                            try {
+                                return [
+                                    'id' => $media->id,
+                                    'url' => $media->getUrl(),
+                                    'name' => $media->name,
+                                    'size' => $media->size,
+                                    'mime_type' => $media->mime_type,
+                                ];
+                            } catch (\Exception $e) {
+                                Log::warning("Error processing PDF media: " . $e->getMessage());
+                                return null;
+                            }
+                        })->filter()->values()->toArray();
+                    } catch (\Exception $e) {
+                        Log::warning("Error fetching announcement PDFs: " . $e->getMessage());
+                        $allPdfs = [];
+                    }
+
+                    // Get all timetables for this announcement with error handling
+                    $allTimetables = [];
+                    try {
+                        $allTimetables = $announcement->getMedia('announcement_timetable')->map(function ($media) {
+                            try {
+                                return [
+                                    'id' => $media->id,
+                                    'url' => $media->getUrl(),
+                                    'name' => $media->name,
+                                    'size' => $media->size,
+                                    'mime_type' => $media->mime_type,
+                                ];
+                            } catch (\Exception $e) {
+                                Log::warning("Error processing timetable media: " . $e->getMessage());
+                                return null;
+                            }
+                        })->filter()->values()->toArray();
+                    } catch (\Exception $e) {
+                        Log::warning("Error fetching announcement timetables: " . $e->getMessage());
+                        $allTimetables = [];
+                    }
+
+                    // Check if announcement is for today
+                    $today = now()->startOfDay();
+                    $isToday = false;
+                    if ($announcement->published_at) {
+                        try {
+                            $isToday = $announcement->published_at->startOfDay()->equalTo($today);
+                        } catch (\Exception $e) {
+                            Log::warning("Error checking if announcement is today: " . $e->getMessage());
+                        }
+                    }
+
+                    // Safely get first image URL
+                    $firstImageUrl = null;
+                    try {
+                        $firstImageUrl = $announcement->getFirstMediaUrl('announcement_image') ?: null;
+                    } catch (\Exception $e) {
+                        Log::warning("Error getting first image URL: " . $e->getMessage());
+                    }
+
+                    // Safely format created_at
+                    $createdAt = 'N/A';
+                    if ($announcement->created_at) {
+                        try {
+                            $createdAt = $announcement->created_at->format('Y-m-d H:i:s');
+                        } catch (\Exception $e) {
+                            Log::warning("Error formatting created_at: " . $e->getMessage());
+                        }
+                    }
+
+                    return [
+                        'id' => $announcement->id,
+                        'title' => $announcement->title ?? '',
+                        'description' => $announcement->description ?? '',
+                        'content' => $announcement->content ?? '',
+                        'message' => $announcement->content ?? '', // For frontend compatibility
+                        'type' => $announcement->type ?? 'general',
+                        'priority' => $announcement->type ?? 'general', // For frontend compatibility
+                        'is_pinned' => $announcement->is_pinned ?? false,
+                        'published_at' => $announcement->published_at?->format('Y-m-d H:i:s'),
+                        'expires_at' => $announcement->expires_at?->format('Y-m-d H:i:s'),
+                        'start_date_time' => $announcement->published_at?->format('Y-m-d H:i:s'), // For frontend compatibility
+                        'end_date_time' => $announcement->expires_at?->format('Y-m-d H:i:s'), // For frontend compatibility
+                        'target_roles' => $announcement->target_roles ?? [],
+                        'target_audience' => !empty($announcement->target_roles) ? array_map('strtolower', $announcement->target_roles) : [], // For frontend compatibility
+                        'target_years' => $announcement->target_years ?? [],
+                        'course_time_slot_ids' => $announcement->course_time_slot_ids ?? [],
+                        'is_today' => $isToday, // Flag to identify today's announcements
+                        'image' => $firstImageUrl, // First image for backward compatibility
+                        'images' => $allImages, // All images
+                        'images_count' => count($allImages),
+                        'pdfs' => $allPdfs, // All PDFs
+                        'pdfs_count' => count($allPdfs),
+                        'timetables' => $allTimetables, // All timetables
+                        'timetables_count' => count($allTimetables),
+                        'created_by' => $announcement->creator ? [
+                            'id' => $announcement->creator->id ?? null,
+                            'name' => $announcement->creator->full_name ?? 'N/A',
+                            'email' => $announcement->creator->email ?? 'N/A',
+                        ] : null,
+                        'created_at' => $createdAt,
+                    ];
+                } catch (\Exception $e) {
+                    Log::error("Error processing announcement {$announcement->id}: " . $e->getMessage());
+                    // Return minimal data if processing fails
+                    return [
+                        'id' => $announcement->id,
+                        'title' => $announcement->title ?? 'Announcement',
+                        'message' => $announcement->content ?? '',
+                        'priority' => $announcement->type ?? 'general',
+                        'is_pinned' => $announcement->is_pinned ?? false,
+                        'published_at' => $announcement->published_at?->format('Y-m-d H:i:s'),
+                        'expires_at' => $announcement->expires_at?->format('Y-m-d H:i:s'),
+                        'start_date_time' => $announcement->published_at?->format('Y-m-d H:i:s'),
+                        'end_date_time' => $announcement->expires_at?->format('Y-m-d H:i:s'),
+                        'target_roles' => $announcement->target_roles ?? [],
+                        'target_audience' => !empty($announcement->target_roles) ? array_map('strtolower', $announcement->target_roles) : [],
+                        'course_time_slot_ids' => $announcement->course_time_slot_ids ?? [],
+                        'is_today' => false,
+                        'images' => [],
+                        'pdfs' => [],
+                        'timetables' => [],
+                        'created_at' => $announcement->created_at?->format('Y-m-d H:i:s') ?? 'N/A',
+                    ];
+                }
             });
 
             return sendResponse($announcements, 'Announcements fetched successfully.');
-        } catch (Exception $e) {
-            return errorLog("Failed to fetch announcements: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+        } catch (\Exception $e) {
+            Log::error("Failed to fetch announcements: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+            Log::error("Stack trace: " . $e->getTraceAsString());
+
+            // Return a more helpful error message
+            return sendError(
+                'Failed to fetch announcements',
+                ['error' => 'An error occurred while fetching announcements. Please try again later.'],
+                500
+            );
         }
     }
 
@@ -523,24 +725,41 @@ class FrontendController extends Controller
         try {
             $user = Auth::user();
             $userRoles = $user ? $user->roles->pluck('name')->toArray() : [];
-            $userYearIds = [];
+            $userCourseTimeSlotIds = [];
+            $isAdmin = !empty($userRoles) && in_array(config('constants.roles.ADMIN'), $userRoles);
 
-            // Get year IDs based on user role
-            if ($user) {
+            // Get course time slot IDs based on user role
+            if ($user && !$isAdmin) {
                 if (in_array(config('constants.roles.STUDENT'), $userRoles)) {
-                    // For students: get their year_id
-                    $studentDetail = StudentDetail::where('child_id', $user->id)->first();
-                    if ($studentDetail && $studentDetail->year_id) {
-                        $userYearIds[] = $studentDetail->year_id;
+                    // For students: get their enrolled courses and their time slots
+                    $studentRecords = \App\Models\ManageStudentRecord::where('buyer_id', $user->id)
+                        ->whereNotNull('course_id')
+                        ->pluck('course_id')
+                        ->unique();
+
+                    if ($studentRecords->isNotEmpty()) {
+                        $userCourseTimeSlotIds = CourseTimeSlot::whereIn('course_id', $studentRecords)
+                            ->pluck('id')
+                            ->toArray();
                     }
                 } elseif (in_array(config('constants.roles.PARENT'), $userRoles)) {
-                    // For parents: get all their students' year_ids
+                    // For parents: get all their students' enrolled courses and their time slots
                     $studentDetails = StudentDetail::where('parent_id', $user->id)
-                        ->whereNotNull('year_id')
-                        ->pluck('year_id')
-                        ->unique()
-                        ->toArray();
-                    $userYearIds = array_values($studentDetails);
+                        ->pluck('child_id')
+                        ->unique();
+
+                    if ($studentDetails->isNotEmpty()) {
+                        $studentRecords = \App\Models\ManageStudentRecord::whereIn('buyer_id', $studentDetails)
+                            ->whereNotNull('course_id')
+                            ->pluck('course_id')
+                            ->unique();
+
+                        if ($studentRecords->isNotEmpty()) {
+                            $userCourseTimeSlotIds = CourseTimeSlot::whereIn('course_id', $studentRecords)
+                                ->pluck('id')
+                                ->toArray();
+                        }
+                    }
                 }
             }
 
@@ -559,12 +778,21 @@ class FrontendController extends Controller
                 }
             }
 
-            // Check if user has access based on target years (grades)
-            // Admins can see all announcements regardless of year
-            if (!empty($announcement->target_years) && !in_array(config('constants.roles.ADMIN'), $userRoles)) {
-                // For students and parents, check if their year matches
-                if (empty($userYearIds) || !array_intersect($announcement->target_years, $userYearIds)) {
-                    return sendError('You do not have access to this announcement based on your grade/year', [], 403);
+            // Check if user has access based on course time slots
+            // Admins can see all announcements regardless of course time slots
+            if (!$isAdmin && !empty($announcement->course_time_slot_ids)) {
+                // For students and parents, check if they have any matching course time slots
+                // OR if the announcement has no course time slot restriction (empty array)
+                $announcementSlotIds = is_array($announcement->course_time_slot_ids)
+                    ? $announcement->course_time_slot_ids
+                    : [];
+
+                // If announcement has course time slot restrictions
+                if (!empty($announcementSlotIds)) {
+                    // Check if user has any matching course time slots
+                    if (empty($userCourseTimeSlotIds) || !array_intersect($announcementSlotIds, $userCourseTimeSlotIds)) {
+                        return sendError('You do not have access to this announcement based on your enrolled courses', [], 403);
+                    }
                 }
             }
 

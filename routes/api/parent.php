@@ -56,3 +56,7 @@ Route::delete('billing-information/{id}', [BillingInformationController::class, 
 
 // Paper Request to Home Route
 Route::post('request-paper-to-home', [RequestPaperToHomeController::class, 'store']);
+
+//announcements routes
+Route::get('announcements', [\App\Http\Controllers\Api\FrontendController::class, 'announcementView']);
+Route::get('announcements/{id}', [\App\Http\Controllers\Api\FrontendController::class, 'announcementDetails']);
