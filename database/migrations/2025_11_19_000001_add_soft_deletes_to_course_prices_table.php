@@ -11,9 +11,12 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('course_prices', function (Blueprint $table) {
-            $table->softDeletes();
-        });
+        // Check if table exists and column doesn't already exist
+        if (Schema::hasTable('course_prices') && !Schema::hasColumn('course_prices', 'deleted_at')) {
+            Schema::table('course_prices', function (Blueprint $table) {
+                $table->softDeletes();
+            });
+        }
     }
 
     /**
@@ -21,8 +24,11 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('course_prices', function (Blueprint $table) {
-            $table->dropSoftDeletes();
-        });
+        // Check if table exists and column exists before dropping
+        if (Schema::hasTable('course_prices') && Schema::hasColumn('course_prices', 'deleted_at')) {
+            Schema::table('course_prices', function (Blueprint $table) {
+                $table->dropSoftDeletes();
+            });
+        }
     }
 };

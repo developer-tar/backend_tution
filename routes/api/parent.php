@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\FrontendController;
 use App\Http\Controllers\Api\MockExamPurchaseController;
 use App\Http\Controllers\Api\PaperPurchaseController;
 use App\Http\Controllers\Api\Parent\BillingInformationController;
@@ -56,3 +57,6 @@ Route::delete('billing-information/{id}', [BillingInformationController::class, 
 
 // Paper Request to Home Route
 Route::post('request-paper-to-home', [RequestPaperToHomeController::class, 'store']);
+
+// Announcements routes
+Route::get('announcements', [FrontendController::class, 'getAnnouncements']);

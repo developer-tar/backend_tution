@@ -27,6 +27,11 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Check if mock_exams table exists before adding indexes
+        if (!Schema::hasTable('mock_exams')) {
+            return; // Table doesn't exist yet, skip this migration
+        }
+
         // Add indexes to mock_exams table
         Schema::table('mock_exams', function (Blueprint $table) {
             if (!$this->hasIndex('mock_exams', 'idx_mock_exams_category_id')) {
@@ -43,44 +48,59 @@ return new class extends Migration
             }
             // Check for unique constraint on slug - only add if no duplicates exist
             if (!$this->hasIndex('mock_exams', 'idx_mock_exams_slug_unique')) {
-                $duplicates = DB::select(
-                    'SELECT slug, COUNT(*) as count FROM mock_exams WHERE slug IS NOT NULL GROUP BY slug HAVING count > 1'
-                );
-                if (empty($duplicates)) {
-                    $table->unique('slug', 'idx_mock_exams_slug_unique');
+                try {
+                    // Check if slug column exists before querying
+                    if (Schema::hasColumn('mock_exams', 'slug')) {
+                        $duplicates = DB::select(
+                            'SELECT slug, COUNT(*) as count FROM mock_exams WHERE slug IS NOT NULL GROUP BY slug HAVING count > 1'
+                        );
+                        if (empty($duplicates)) {
+                            $table->unique('slug', 'idx_mock_exams_slug_unique');
+                        }
+                    }
+                } catch (\Exception $e) {
+                    // If query fails (table doesn't exist or column doesn't exist), skip unique constraint
+                    // It will be added in a later migration when the table/column is ready
                 }
             }
         });
 
         // Add indexes to mock_exam_questions table
-        Schema::table('mock_exam_questions', function (Blueprint $table) {
+        if (Schema::hasTable('mock_exam_questions')) {
+            Schema::table('mock_exam_questions', function (Blueprint $table) {
             if (!$this->hasIndex('mock_exam_questions', 'idx_mock_exam_questions_exam_order')) {
                 $table->index(['mock_exam_id', 'order'], 'idx_mock_exam_questions_exam_order');
             }
             if (!$this->hasIndex('mock_exam_questions', 'idx_mock_exam_questions_status')) {
                 $table->index('status', 'idx_mock_exam_questions_status');
             }
-        });
+            });
+        }
 
         // Add indexes to mock_exam_options table
-        Schema::table('mock_exam_options', function (Blueprint $table) {
+        if (Schema::hasTable('mock_exam_options')) {
+            Schema::table('mock_exam_options', function (Blueprint $table) {
             if (!$this->hasIndex('mock_exam_options', 'idx_mock_exam_options_question_order')) {
                 $table->index(['mock_exam_question_id', 'order'], 'idx_mock_exam_options_question_order');
             }
             if (!$this->hasIndex('mock_exam_options', 'idx_mock_exam_options_status')) {
                 $table->index('status', 'idx_mock_exam_options_status');
             }
-        });
+            });
+        }
 
         // Add indexes to mock_exam_answers table
-        Schema::table('mock_exam_answers', function (Blueprint $table) {
+        if (Schema::hasTable('mock_exam_answers')) {
+            Schema::table('mock_exam_answers', function (Blueprint $table) {
             if (!$this->hasIndex('mock_exam_answers', 'idx_mock_exam_answers_option_id')) {
                 $table->index('mock_exam_option_id', 'idx_mock_exam_answers_option_id');
             }
-        });
+            });
+        }
 
         // Add indexes to mock_exam_purchases table
-        Schema::table('mock_exam_purchases', function (Blueprint $table) {
+        if (Schema::hasTable('mock_exam_purchases')) {
+            Schema::table('mock_exam_purchases', function (Blueprint $table) {
             if (!$this->hasIndex('mock_exam_purchases', 'idx_mock_exam_purchases_user_exam')) {
                 $table->index(['user_id', 'mock_exam_id'], 'idx_mock_exam_purchases_user_exam');
             }
@@ -100,17 +120,20 @@ return new class extends Migration
             if (!$this->hasIndex('mock_exam_purchases', 'unique_mock_exam_purchase')) {
                 $table->unique(['user_id', 'mock_exam_id', 'student_id'], 'unique_mock_exam_purchase');
             }
-        });
+            });
+        }
 
         // Add indexes to mock_exam_user_answers table
-        Schema::table('mock_exam_user_answers', function (Blueprint $table) {
+        if (Schema::hasTable('mock_exam_user_answers')) {
+            Schema::table('mock_exam_user_answers', function (Blueprint $table) {
             if (!$this->hasIndex('mock_exam_user_answers', 'idx_user_answers_purchase_question')) {
                 $table->index(['mock_exam_purchase_id', 'mock_exam_question_id'], 'idx_user_answers_purchase_question');
             }
             if (!$this->hasIndex('mock_exam_user_answers', 'idx_user_answers_option_id')) {
                 $table->index('mock_exam_option_id', 'idx_user_answers_option_id');
             }
-        });
+            });
+        }
     }
 
     /**

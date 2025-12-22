@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Response;
+use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
@@ -25,8 +26,7 @@ class AuthController extends Controller
      * @param Request $request
      * @return \Illuminate\Http\JsonResponse
      */
-    // public function AdminLogin(AdminLoginRequest $request)
-    public function AdminLogin(LoginRequest $request)
+    public function AdminLogin(AdminLoginRequest $request)
     {
         try {
             $credentials = $request->only('email', 'password');
@@ -35,19 +35,21 @@ class AuthController extends Controller
                 $role = $user->roles()->first();
                 if (!$role) {
                     Log::error("Role has not found", ['user' => $user]);
-                    return sendError('Not Found');
+                    return sendError('Not Found', ['error' => 'User role not found.'], 404);
                 }
                 if ($role?->name != config('constants.roles.ADMIN')) {
-                    return sendError('Error', ['error' => 'Not Found ']);
+                    return sendError('Unauthorized', ['error' => 'You are not authorized to access admin panel.'], 403);
                 }
                 if ($user->status == config('constants.statuses.APPROVED')) {
-
+                    // Create token with role name as scope
+                    $tokenResult = $user->createToken('accessToken', [$role?->name]);
+                    
                     $user = [
                         'id' => $user->id,
                         'full_name' => $user->full_name,
                         'email' => $user->email,
                         'role' => $role?->name,
-                        'access_token' => $user->createToken('accessToken', [$role?->name])->accessToken,
+                        'access_token' => $tokenResult->accessToken,
                     ];
                     $response = [
                         'success' => true,
@@ -59,11 +61,33 @@ class AuthController extends Controller
                     return sendError('Error', ['error' => 'This user is not active yet.'], 400);
                 }
             } else {
-                return sendError('Unauthorized', ['error' => 'Unauthorised'], 401);
+                return sendError('Unauthorized', ['error' => 'Invalid email or password.'], 401);
             }
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            Log::error("Validation error in admin login. Message => {$e->getMessage()}");
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'data' => ['error' => $e->getMessage()],
+                'errors' => $e->errors(),
+            ], 422);
         } catch (Exception $e) {
-            Log::error("Error occur login. Message => {$e->getMessage()}, File => {$e->getFile()},  Line No => {$e->getLine()}, Error Code => {$e->getCode()}.");
-            return sendError('Error', ['error' => 'An error is occured.'], 500);
+            $errorDetails = [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString()
+            ];
+            
+            Log::error("Error occur in admin login", $errorDetails);
+            
+            // Always show detailed error for debugging (can be changed to check config('app.debug') later)
+            $errorMessage = "An error occurred: {$e->getMessage()}";
+            if (config('app.debug')) {
+                $errorMessage .= " in {$e->getFile()} on line {$e->getLine()}";
+            }
+            
+            return sendError('Error', ['error' => $errorMessage], 500);
         }
 
     }

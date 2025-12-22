@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Admin\Assign\{AssignedStudentCourseController, Assi
 use App\Http\Controllers\Api\Admin\Assign\{CourseController, TopicSubTopicController, TimeSlotController};
 use App\Http\Controllers\Api\Admin\Assign\MockExamController;
 use App\Http\Controllers\Api\Admin\Assign\PaperController;
+use App\Http\Controllers\Api\Admin\AnnouncementController;
 use App\Http\Controllers\Api\Admin\MasterFormController;
 use App\Http\Controllers\Api\Admin\ParentController;
 use App\Http\Controllers\Api\Admin\PaperPurchaseController;
@@ -122,3 +123,8 @@ Route::delete('student/{student}', [StudentController::class, 'destroy']); // De
 //start paper purchase management routing
 Route::get('paper-purchases', [PaperPurchaseController::class, 'index']); // Get aggregated paper purchases list
 //end paper purchase management routing
+
+//start announcement management routing
+Route::get('announcements/target-audience-roles', [AnnouncementController::class, 'getTargetAudienceRoles']); // Get roles for target audience
+Route::resource('announcements', AnnouncementController::class);
+//end announcement management routing

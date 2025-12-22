@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\Response;
  * @return \Illuminate\Http\JsonResponse
  */
 
-function sendResponse($result = 'delete', $message, $code = 200) {
+function sendResponse($result = 'delete', $message = '', $code = 200) {
 
     $response = [
         'success' => true,

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\SlugValidateRequest;
+use App\Models\Announcement;
 use App\Models\Course;
 use App\Models\MockExam;
 use App\Models\MockExamCategory;
@@ -392,6 +393,75 @@ class FrontendController extends Controller
             
         } catch (Exception $e) {
             return errorLog("Failed to fetch categories: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+        }
+    }
+
+    /**
+     * Get announcements for the authenticated user's dashboard
+     * Students and Parents can see all announcements
+     * Other roles see only announcements targeted to their roles
+     */
+    public function getAnnouncements(Request $request)
+    {
+        try {
+            $user = Auth::user();
+            
+            if (!$user) {
+                return sendError('error', ['error' => 'Unauthorized.'], 401);
+            }
+
+            // Get user's roles
+            $userRoles = $user->roles()->pluck('id')->toArray();
+            $userRoleNames = $user->roles()->pluck('name')->toArray();
+
+            // Check if user is Student or Parent - they can see all announcements
+            $isStudentOrParent = in_array(config('constants.roles.STUDENT'), $userRoleNames) 
+                || in_array(config('constants.roles.PARENT'), $userRoleNames);
+
+            if ($isStudentOrParent) {
+                // Students and Parents see all active announcements
+                $announcements = Announcement::active()
+                    ->with('roles:id,name')
+                    ->latest()
+                    ->get();
+            } else {
+                // Other roles see only announcements targeted to their roles
+                $announcements = Announcement::active()
+                    ->whereHas('roles', function ($query) use ($userRoles) {
+                        $query->whereIn('roles.id', $userRoles);
+                    })
+                    ->with('roles:id,name')
+                    ->latest()
+                    ->get();
+            }
+
+            // Transform the data
+            $transformedAnnouncements = $announcements->map(function ($announcement) {
+                return [
+                    'id' => $announcement->id,
+                    'title' => $announcement->title,
+                    'message' => $announcement->message,
+                    'status' => $announcement->status,
+                    'target_audience' => $announcement->roles->map(function ($role) {
+                        return [
+                            'id' => $role->id,
+                            'name' => $role->name,
+                        ];
+                    }),
+                    'created_at' => $announcement->created_at->format('Y-m-d H:i:s'),
+                    'created_at_human' => $announcement->created_at->diffForHumans(),
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Announcements fetched successfully.',
+                'data' => $transformedAnnouncements,
+            ], 200);
+
+        } catch (Exception $e) {
+            Log::error("Failed to fetch announcements: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+            return sendError('error', ['error' => 'An error occurred while fetching announcements.'], 500);
         }
     }
 }
