@@ -126,5 +126,9 @@ Route::get('paper-purchases', [PaperPurchaseController::class, 'index']); // Get
 
 //start announcement management routing
 Route::get('announcements/target-audience-roles', [AnnouncementController::class, 'getTargetAudienceRoles']); // Get roles for target audience
+Route::get('announcements/module-modes', [AnnouncementController::class, 'getModuleModes']); // Get module modes
+Route::get('announcements/academic-years', [AnnouncementController::class, 'getAcademicYears']); // Get academic years
+Route::get('announcements/filtered-items', [AnnouncementController::class, 'getFilteredItems']); // Get courses/papers/mock exams filtered by mode and academic year
+Route::get('announcements/classes', [AnnouncementController::class, 'getClasses']); // Get classes (timeslots) for a course
 Route::resource('announcements', AnnouncementController::class);
 //end announcement management routing

@@ -25,7 +25,7 @@ class UserFactory extends Factory
     {
         $name = fake()->name();
         $nameParts = explode(' ', $name, 2);
-        
+
         return [
             'first_name' => $nameParts[0],
             'last_name' => $nameParts[1] ?? null,
@@ -41,7 +41,7 @@ class UserFactory extends Factory
      */
     public function unverified(): static
     {
-        return $this->state(fn (array $attributes) => [
+        return $this->state(fn(array $attributes) => [
             'email_verified_at' => null,
         ]);
     }
