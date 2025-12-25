@@ -5,6 +5,13 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Announcement;
 use App\Models\Role;
+use App\Models\AcdemicYear;
+use App\Models\Course;
+use App\Models\Paper;
+use App\Models\MockExam;
+use App\Models\CourseTimeSlot;
+use App\Models\AcdemicCourse;
+use App\Models\Module;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -31,7 +38,7 @@ class AnnouncementController extends Controller
                 ->when($search, function ($query) use ($search) {
                     $query->where(function ($q) use ($search) {
                         $q->where('title', 'LIKE', "%{$search}%")
-                          ->orWhere('message', 'LIKE', "%{$search}%");
+                            ->orWhere('message', 'LIKE', "%{$search}%");
                     });
                 })
                 ->when($status, function ($query) use ($status) {
@@ -80,18 +87,16 @@ class AnnouncementController extends Controller
         } catch (\Illuminate\Database\QueryException $e) {
             // Check if it's a table doesn't exist error
             if (str_contains($e->getMessage(), "doesn't exist") || str_contains($e->getMessage(), 'Base table or view not found')) {
-                Log::error("Announcements table doesn't exist. Migration may not have been run. Message => {$e->getMessage()}");
+                errorLog("Announcements table doesn't exist. Migration may not have been run. Message => {$e->getMessage()}");
                 return response()->json([
                     'success' => false,
                     'message' => 'Database tables not found. Please run the migration: php artisan migrate',
                     'error' => 'Migration required'
                 ], 500);
             }
-            Log::error("Database error fetching announcements. Message => {$e->getMessage()}");
-            return sendError('error', ['error' => 'A database error occurred while fetching announcements.'], 500);
+            return errorLog("Database error fetching announcements: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         } catch (\Exception $e) {
-            Log::error("Failed to fetch announcements. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}");
-            return sendError('error', ['error' => 'An error occurred while fetching announcements.'], 500);
+            return errorLog("Failed to fetch announcements: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
 
@@ -107,9 +112,13 @@ class AnnouncementController extends Controller
             $validated = $request->validate([
                 'title' => 'required|string|max:255',
                 'message' => 'required|string',
-                'status' => 'required|in:active,inactive',
+                'status' => 'required|in:' . config('constants.announcement_status.draft') . ',' . config('constants.announcement_status.publish'),
                 'target_audience' => 'required|array|min:1',
                 'target_audience.*' => 'exists:roles,id',
+                'module_id' => 'nullable|exists:module,id',
+                'academic_year_id' => 'nullable|exists:acdemic_years,id',
+                'course_id' => 'nullable|exists:courses,id',
+                'class_id' => 'nullable|exists:course_time_slots,id',
             ]);
 
             DB::beginTransaction();
@@ -118,6 +127,10 @@ class AnnouncementController extends Controller
                 'title' => $validated['title'],
                 'message' => $validated['message'],
                 'status' => $validated['status'],
+                'module_id' => $validated['module_id'] ?? null,
+                'academic_year_id' => $validated['academic_year_id'] ?? null,
+                'course_id' => $validated['course_id'] ?? null,
+                'class_id' => $validated['class_id'] ?? null,
             ]);
 
             // Attach roles (target audience)
@@ -158,8 +171,7 @@ class AnnouncementController extends Controller
             ], 422);
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error("Failed to create announcement. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}");
-            return sendError('error', ['error' => 'An error occurred while creating announcement.'], 500);
+            return errorLog("Failed to create announcement: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
 
@@ -200,8 +212,7 @@ class AnnouncementController extends Controller
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return sendError('error', ['error' => 'Announcement not found.'], 404);
         } catch (\Exception $e) {
-            Log::error("Failed to fetch announcement. Message => {$e->getMessage()}");
-            return sendError('error', ['error' => 'An error occurred while fetching announcement.'], 500);
+            return errorLog("Failed to fetch announcement: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
 
@@ -218,9 +229,13 @@ class AnnouncementController extends Controller
             $validated = $request->validate([
                 'title' => 'sometimes|required|string|max:255',
                 'message' => 'sometimes|required|string',
-                'status' => 'sometimes|required|in:active,inactive',
+                'status' => 'sometimes|required|in:' . config('constants.announcement_status.draft') . ',' . config('constants.announcement_status.publish'),
                 'target_audience' => 'sometimes|required|array|min:1',
                 'target_audience.*' => 'exists:roles,id',
+                'module_id' => 'nullable|exists:module,id',
+                'academic_year_id' => 'nullable|exists:acdemic_years,id',
+                'course_id' => 'nullable|exists:courses,id',
+                'class_id' => 'nullable|exists:course_time_slots,id',
             ]);
 
             DB::beginTransaction();
@@ -236,6 +251,18 @@ class AnnouncementController extends Controller
             }
             if (isset($validated['status'])) {
                 $announcement->status = $validated['status'];
+            }
+            if (isset($validated['module_id'])) {
+                $announcement->module_id = $validated['module_id'];
+            }
+            if (isset($validated['academic_year_id'])) {
+                $announcement->academic_year_id = $validated['academic_year_id'];
+            }
+            if (isset($validated['course_id'])) {
+                $announcement->course_id = $validated['course_id'];
+            }
+            if (isset($validated['class_id'])) {
+                $announcement->class_id = $validated['class_id'];
             }
 
             $announcement->save();
@@ -284,8 +311,7 @@ class AnnouncementController extends Controller
             ], 422);
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error("Failed to update announcement. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}");
-            return sendError('error', ['error' => 'An error occurred while updating announcement.'], 500);
+            return errorLog("Failed to update announcement: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
 
@@ -314,8 +340,7 @@ class AnnouncementController extends Controller
             return sendError('error', ['error' => 'Announcement not found.'], 404);
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error("Failed to delete announcement. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}");
-            return sendError('error', ['error' => 'An error occurred while deleting announcement.'], 500);
+            return errorLog("Failed to delete announcement: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
 
@@ -330,7 +355,7 @@ class AnnouncementController extends Controller
         try {
             // Check if roles table exists
             if (!Schema::hasTable('roles')) {
-                Log::error("Roles table doesn't exist. Migration may not have been run.");
+                errorLog("Roles table doesn't exist. Migration may not have been run.");
                 return response()->json([
                     'success' => false,
                     'message' => 'Roles table not found. Please run the migration: php artisan migrate',
@@ -347,15 +372,15 @@ class AnnouncementController extends Controller
             // Return empty array if no roles found, but still success
             return response()->json([
                 'success' => true,
-                'message' => $roles->isEmpty() 
-                    ? 'No roles found. Please seed the roles table.' 
+                'message' => $roles->isEmpty()
+                    ? 'No roles found. Please seed the roles table.'
                     : 'Target audience roles fetched successfully.',
                 'data' => $roles,
             ], 200);
         } catch (\Illuminate\Database\QueryException $e) {
             // Check if it's a table doesn't exist error
             if (str_contains($e->getMessage(), "doesn't exist") || str_contains($e->getMessage(), 'Base table or view not found')) {
-                Log::error("Roles table doesn't exist. Migration may not have been run. Message => {$e->getMessage()}");
+                errorLog("Roles table doesn't exist. Migration may not have been run. Message => {$e->getMessage()}");
                 return response()->json([
                     'success' => false,
                     'message' => 'Roles table not found. Please run the migration: php artisan migrate',
@@ -363,12 +388,229 @@ class AnnouncementController extends Controller
                     'error' => 'Migration required'
                 ], 500);
             }
-            Log::error("Database error fetching target audience roles. Message => {$e->getMessage()}");
-            return sendError('error', ['error' => 'A database error occurred while fetching target audience roles.'], 500);
+            return errorLog("Database error fetching target audience roles: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         } catch (\Exception $e) {
-            Log::error("Failed to fetch target audience roles. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}");
-            return sendError('error', ['error' => 'An error occurred while fetching target audience roles.'], 500);
+            return errorLog("Failed to fetch target audience roles: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+        }
+    }
+
+    /**
+     * Get all academic years for course year selection.
+     *
+     * @return JsonResponse
+     */
+    public function getAcademicYears(): JsonResponse
+    {
+        try {
+            $academicYears = AcdemicYear::select('id', 'start_year', 'end_year')
+                ->whereNull('deleted_at')
+                ->orderBy('start_year', 'desc')
+                ->get()
+                ->map(function ($year) {
+                    return [
+                        'id' => $year->id,
+                        'name' => $year->start_end_year, // Using the accessor
+                        'start_year' => $year->start_year,
+                        'end_year' => $year->end_year,
+                    ];
+                });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Academic years fetched successfully.',
+                'data' => $academicYears,
+            ], 200);
+        } catch (\Exception $e) {
+            return errorLog("Failed to fetch academic years: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+        }
+    }
+
+    /**
+     * Get all module modes for selection.
+     *
+     * @return JsonResponse
+     */
+    public function getModuleModes(): JsonResponse
+    {
+        try {
+            $modes = Module::active()
+                ->select('id', 'name', 'description')
+                ->orderBy('name', 'asc')
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Module modes fetched successfully.',
+                'data' => $modes,
+            ], 200);
+        } catch (\Exception $e) {
+            return errorLog("Failed to fetch module modes: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+        }
+    }
+
+    /**
+     * Get courses/papers/mock exams filtered by mode and academic year.
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function getFilteredItems(Request $request): JsonResponse
+    {
+        try {
+            $moduleId = $request->input('module_id');
+            $academicYearId = $request->input('academic_year_id');
+
+            if (!$moduleId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Module ID is required.',
+                    'data' => [],
+                ], 422);
+            }
+
+            $mode = Module::find($moduleId);
+            if (!$mode) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid mode ID.',
+                    'data' => [],
+                ], 422);
+            }
+
+            $items = [];
+
+            // Determine mode type by name
+            $modeName = strtolower($mode->name);
+            switch ($modeName) {
+                case 'courses':
+                    $query = Course::where('status', config('constants.statuses.APPROVED'));
+
+                    if ($academicYearId) {
+                        $query->whereHas('acdemicyears', function ($q) use ($academicYearId) {
+                            $q->where('acdemic_years.id', $academicYearId);
+                        });
+                    }
+
+                    $items = $query->select('id', 'name')
+                        ->orderBy('name', 'asc')
+                        ->get()
+                        ->map(function ($course) {
+                            return [
+                                'id' => $course->id,
+                                'name' => $course->name,
+                            ];
+                        });
+                    break;
+
+                case 'papers':
+                    $items = Paper::where('status', config('constants.statuses.APPROVED'))
+                        ->select('id', 'name')
+                        ->orderBy('name', 'asc')
+                        ->get()
+                        ->map(function ($paper) {
+                            return [
+                                'id' => $paper->id,
+                                'name' => $paper->name,
+                            ];
+                        });
+                    break;
+
+                case 'mock exams':
+                    $items = MockExam::where('status', config('constants.statuses.APPROVED'))
+                        ->select('id', 'name')
+                        ->orderBy('name', 'asc')
+                        ->get()
+                        ->map(function ($exam) {
+                            return [
+                                'id' => $exam->id,
+                                'name' => $exam->name,
+                            ];
+                        });
+                    break;
+
+                default:
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Invalid mode. Must be one of: courses, papers, mock_exams',
+                        'data' => [],
+                    ], 422);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => ucfirst($mode->name) . ' fetched successfully.',
+                'data' => $items,
+            ], 200);
+        } catch (\Exception $e) {
+            return errorLog("Failed to fetch filtered items: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+        }
+    }
+
+    /**
+     * Get classes (timeslots) for a specific course and academic year.
+     * Fetches class names from course_time_slots table based on course_id and academic_year_id.
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function getClasses(Request $request): JsonResponse
+    {
+        try {
+            $courseId = $request->input('course_id');
+            $academicYearId = $request->input('academic_year_id');
+
+            if (!$courseId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Course ID is required.',
+                    'data' => [],
+                ], 422);
+            }
+
+            if (!$academicYearId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Academic Year ID is required.',
+                    'data' => [],
+                ], 422);
+            }
+
+            // First, find the academic_course_id by matching course_id and academic_year_id
+            $academicCourse = AcdemicCourse::where('course_id', $courseId)
+                ->where('acdemic_id', $academicYearId)
+                ->whereNull('deleted_at')
+                ->first();
+
+            if (!$academicCourse) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'No academic course found for the selected course and academic year.',
+                    'data' => [],
+                ], 200);
+            }
+
+            // Fetch classes from course_time_slots where course_id and academic_course_id match
+            $classes = CourseTimeSlot::where('course_id', $courseId)
+                ->where('academic_course_id', $academicCourse->id)
+                ->whereNull('deleted_at')
+                ->select('id', 'class_name')
+                ->distinct()
+                ->orderBy('class_name', 'asc')
+                ->get()
+                ->map(function ($slot) {
+                    return [
+                        'id' => $slot->id,
+                        'name' => $slot->class_name,
+                    ];
+                });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Classes fetched successfully.',
+                'data' => $classes,
+            ], 200);
+        } catch (\Exception $e) {
+            return errorLog("Failed to fetch classes: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
 }
-

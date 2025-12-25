@@ -8,6 +8,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class Mode extends Model
 {
     use SoftDeletes;
+
+    protected $table = 'modes';
+
     protected $fillable = [
         'name',
     ];

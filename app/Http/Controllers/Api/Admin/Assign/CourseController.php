@@ -24,63 +24,63 @@ use Illuminate\Validation\ValidationException;
 
 class CourseController extends Controller
 {
-   
+
     public function index(Request $request)
     {
         try {
             $search = $request->input('search');
-            
+
             $courses = Course::with('subjects:id,name', 'modes:id,name', 'features:id,name,course_id', 'acdemicyears', 'prices:id,course_id,amount,billing_period_id,currency', 'prices.billingPeriod:id,name', 'slots:id,course_id,location_id,start_time,end_time,weekday_id,seats,class_name,remaining_seats', 'slots.locations:id,name', 'slots.weekDays:id,name')
                 ->where('created_id', Auth::id())
                 ->when($search, function ($query) use ($search) {
                     $query->where(function ($q) use ($search) {
                         // Search in Course fields
                         $q->where('name', 'LIKE', "%{$search}%")
-                          ->orWhere('description', 'LIKE', "%{$search}%")
-                          ->orWhere('slug', 'LIKE', "%{$search}%")
-                          
-                          // Search in Subjects
-                          ->orWhereHas('subjects', function ($subjectQuery) use ($search) {
-                              $subjectQuery->where('name', 'LIKE', "%{$search}%");
-                          })
-                          
-                          // Search in Modes
-                          ->orWhereHas('modes', function ($modeQuery) use ($search) {
-                              $modeQuery->where('name', 'LIKE', "%{$search}%");
-                          })
-                          
-                          // Search in Features
-                          ->orWhereHas('features', function ($featureQuery) use ($search) {
-                              $featureQuery->where('name', 'LIKE', "%{$search}%");
-                          })
-                          
-                          // Search in Academic Years
-                          ->orWhereHas('acdemicyears', function ($yearQuery) use ($search) {
-                              $yearQuery->where('start_year', 'LIKE', "%{$search}%")
-                                       ->orWhere('end_year', 'LIKE', "%{$search}%");
-                          })
-                          
-                          // Search in Billing Periods through Prices
-                          ->orWhereHas('prices.billingPeriod', function ($billingQuery) use ($search) {
-                              $billingQuery->where('name', 'LIKE', "%{$search}%");
-                          })
-                          
-                          // Search in Locations through Slots
-                          ->orWhereHas('slots.locations', function ($locationQuery) use ($search) {
-                              $locationQuery->where('name', 'LIKE', "%{$search}%");
-                          })
-                          
-                          // Search in WeekDays through Slots
-                          ->orWhereHas('slots.weekDays', function ($weekDayQuery) use ($search) {
-                              $weekDayQuery->where('name', 'LIKE', "%{$search}%");
-                          })
-                          
-                          // Search in Slots fields
-                          ->orWhereHas('slots', function ($slotQuery) use ($search) {
-                              $slotQuery->where('class_name', 'LIKE', "%{$search}%")
-                                       ->orWhere('start_time', 'LIKE', "%{$search}%")
-                                       ->orWhere('end_time', 'LIKE', "%{$search}%");
-                          });
+                            ->orWhere('description', 'LIKE', "%{$search}%")
+                            ->orWhere('slug', 'LIKE', "%{$search}%")
+
+                            // Search in Subjects
+                            ->orWhereHas('subjects', function ($subjectQuery) use ($search) {
+                                $subjectQuery->where('name', 'LIKE', "%{$search}%");
+                            })
+
+                            // Search in Modes
+                            ->orWhereHas('modes', function ($modeQuery) use ($search) {
+                                $modeQuery->where('name', 'LIKE', "%{$search}%");
+                            })
+
+                            // Search in Features
+                            ->orWhereHas('features', function ($featureQuery) use ($search) {
+                                $featureQuery->where('name', 'LIKE', "%{$search}%");
+                            })
+
+                            // Search in Academic Years
+                            ->orWhereHas('acdemicyears', function ($yearQuery) use ($search) {
+                                $yearQuery->where('start_year', 'LIKE', "%{$search}%")
+                                    ->orWhere('end_year', 'LIKE', "%{$search}%");
+                            })
+
+                            // Search in Billing Periods through Prices
+                            ->orWhereHas('prices.billingPeriod', function ($billingQuery) use ($search) {
+                                $billingQuery->where('name', 'LIKE', "%{$search}%");
+                            })
+
+                            // Search in Locations through Slots
+                            ->orWhereHas('slots.locations', function ($locationQuery) use ($search) {
+                                $locationQuery->where('name', 'LIKE', "%{$search}%");
+                            })
+
+                            // Search in WeekDays through Slots
+                            ->orWhereHas('slots.weekDays', function ($weekDayQuery) use ($search) {
+                                $weekDayQuery->where('name', 'LIKE', "%{$search}%");
+                            })
+
+                            // Search in Slots fields
+                            ->orWhereHas('slots', function ($slotQuery) use ($search) {
+                                $slotQuery->where('class_name', 'LIKE', "%{$search}%")
+                                    ->orWhere('start_time', 'LIKE', "%{$search}%")
+                                    ->orWhere('end_time', 'LIKE', "%{$search}%");
+                            });
                     });
                 })
                 ->orderBy('created_at', 'desc')
@@ -93,10 +93,10 @@ class CourseController extends Controller
                         3 => 'rejected'
                     ];
                     $statusLabel = isset($statusMap[$course->status]) ? $statusMap[$course->status] : 'unknown';
-                    
+
                     return [
                         'id' => $course->id,
-                        'acdemicyear' => $course?->acdemicyears->first() 
+                        'acdemicyear' => $course?->acdemicyears->first()
                             ? ($course->acdemicyears->first()->start_year . '-' . $course->acdemicyears->first()->end_year)
                             : null,
                         'name' => $course->name,
@@ -129,7 +129,7 @@ class CourseController extends Controller
                             : null,
                         'image' => $course->getFirstMediaUrl('course_image') ?? null,
                         'description' => $course->description ? Str::limit($course->description, 50) : null,
-                        
+
                         'amounts' => collect($course->prices)->mapWithKeys(function ($price) {
                             $key = $price->billingPeriod->name;
                             return [$key => $price->currency . (float) $price->amount];
@@ -138,9 +138,9 @@ class CourseController extends Controller
                 });
             $response = [
                 'success' => true,
-                'message' => $search 
-                    ? ($courses->total() > 0 
-                        ? "Courses found for search term '{$search}'." 
+                'message' => $search
+                    ? ($courses->total() > 0
+                        ? "Courses found for search term '{$search}'."
                         : "No courses found for search term '{$search}'.")
                     : 'Courses fetched successfully.',
                 'data' => $courses,
@@ -148,8 +148,7 @@ class CourseController extends Controller
             ];
             return response()->json($response, 200);
         } catch (Exception $e) {
-            Log::error("Failed to fetch courses. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
-            return sendError('error', ['error' => 'An error occurred while fetching courses.'], 500);
+            return errorLog("Failed to fetch courses: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
     /**
@@ -172,8 +171,8 @@ class CourseController extends Controller
                 'prices.mode:id,name',
                 'modefeatures:id,course_id,online_features_names,in_person_features_names'
             ])
-            ->where('created_id', Auth::id())
-            ->findOrFail($id);
+                ->where('created_id', Auth::id())
+                ->findOrFail($id);
 
             // Format prices by mode and billing period
             $prices = [];
@@ -225,8 +224,7 @@ class CourseController extends Controller
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return sendError('error', ['error' => 'Course not found.'], 404);
         } catch (Exception $e) {
-            Log::error("Failed to fetch course. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
-            return sendError('error', ['error' => 'An error occurred while fetching course.'], 500);
+            return errorLog("Failed to fetch course: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
 
@@ -261,7 +259,7 @@ class CourseController extends Controller
                 if (isset($data["amount_for_online_{$billingId}"])) {
 
                     $onlineRecord = Mode::where('name', config('constants.modes.online'))
-                        ->value('id');//find out the id of online mode
+                        ->value('id'); //find out the id of online mode
 
                     //create the course mode feature for online    
                     $coursePriceData = [
@@ -275,7 +273,7 @@ class CourseController extends Controller
 
                 if (isset($data["amount_for_in_person_{$billingId}"])) {
                     $inPersonRecord = Mode::where('name', config('constants.modes.in_person'))
-                        ->value('id');//find out the id of in person mode
+                        ->value('id'); //find out the id of in person mode
 
                     //create the course mode feature for in person
                     $coursePriceData = [
@@ -286,7 +284,6 @@ class CourseController extends Controller
                     ];
                     $courseObj->prices()->create($coursePriceData);
                 }
-
             }); //create course prices for each billing period
             if (isset($data['online_features_names']) && is_array($data['online_features_names'])) {
                 //create the course mode feature for online
@@ -295,8 +292,7 @@ class CourseController extends Controller
                         'course_id' => $courseObj->id,
                         'online_features_names' => $name
                     ]);
-
-                }//create the course mode feature for online
+                } //create the course mode feature for online
             }
 
             if (isset($data['in_person_features_names']) && is_array($data['in_person_features_names'])) {
@@ -307,14 +303,14 @@ class CourseController extends Controller
                     ]);
                 }  //create the course mode feature for in person
             }
-          
+
             if ($request->hasFile('course_image')) {
                 // Use queue job for fast response and background R2 upload
                 $file = $request->file('course_image');
-                
+
                 // Store file temporarily in local storage for queue processing
                 $tempPath = $file->store('temp/course_images', 'local');
-                
+
                 // Dispatch job for background processing
                 UploadCourseImageJob::dispatch(
                     $courseObj->id,
@@ -360,8 +356,7 @@ class CourseController extends Controller
             return sendResponse('Course created successfully.', 201);
         } catch (Exception $e) {
             DB::rollBack();
-            Log::error("Failed to create course. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
-            return sendError('error', ['error' => 'An error occurred during store.'], 500);
+            return errorLog("Failed to create course: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
 
@@ -375,14 +370,14 @@ class CourseController extends Controller
     public function update(UpdateCourseRequest $request, $id)
     {
         try {
-            Log::info('updated',['data' => $request->all()]);
+            Log::info('updated', ['data' => $request->all()]);
             Log::info("=== COURSE UPDATE STARTED ===", [
                 'course_id' => $id,
                 'user_id' => Auth::id(),
                 'request_method' => $request->method(),
                 'has_file' => $request->hasFile('course_image')
             ]);
-            
+
             DB::beginTransaction();
             Log::info("Transaction begun for course ID: {$id}");
 
@@ -392,7 +387,7 @@ class CourseController extends Controller
                 'current_name' => $courseObj->name,
                 'current_description' => substr($courseObj->description ?? '', 0, 50) . '...'
             ]);
-            
+
             // Get validated data
             $data = $request->validated();
             Log::info("Request validated successfully", [
@@ -403,7 +398,7 @@ class CourseController extends Controller
             // Update basic course fields
             $updateData = [];
             Log::info("Checking basic course fields for update");
-            
+
             if (isset($data['name']) && !empty($data['name'])) {
                 $updateData['name'] = $data['name'];
                 $updateData['slug'] = Str::slug($data['name']);
@@ -413,7 +408,7 @@ class CourseController extends Controller
                     'new_slug' => $updateData['slug']
                 ]);
             }
-            
+
             if (isset($data['description']) && !empty($data['description'])) {
                 $updateData['description'] = $data['description'];
                 Log::info("Description field will be updated", [
@@ -421,7 +416,7 @@ class CourseController extends Controller
                     'new_description_length' => strlen($data['description'])
                 ]);
             }
-            
+
             if (!empty($updateData)) {
                 Log::info("Updating basic course fields", ['update_data' => $updateData]);
                 $courseObj->update($updateData);
@@ -437,17 +432,17 @@ class CourseController extends Controller
             Log::info("Checking for price updates");
             $billingPeriodIds = BillingPeriod::pluck('id')->toArray();
             Log::info("Billing period IDs found", ['billing_period_ids' => $billingPeriodIds]);
-            
+
             $hasAnyPriceField = false;
             $priceFieldsToCheck = [];
-            
+
             foreach ($billingPeriodIds as $billingId) {
                 $onlineField = "amount_for_online_{$billingId}";
                 $inPersonField = "amount_for_in_person_{$billingId}";
-                
+
                 $hasOnline = isset($data[$onlineField]) && !empty($data[$onlineField]);
                 $hasInPerson = isset($data[$inPersonField]) && !empty($data[$inPersonField]);
-                
+
                 Log::info("Checking price fields for billing period {$billingId}", [
                     'online_field' => $onlineField,
                     'has_online' => $hasOnline,
@@ -456,7 +451,7 @@ class CourseController extends Controller
                     'has_in_person' => $hasInPerson,
                     'in_person_value' => $hasInPerson ? $data[$inPersonField] : null
                 ]);
-                
+
                 if ($hasOnline) {
                     $hasAnyPriceField = true;
                     $priceFieldsToCheck[] = $onlineField;
@@ -466,22 +461,22 @@ class CourseController extends Controller
                     $priceFieldsToCheck[] = $inPersonField;
                 }
             }
-            
+
             $hasTypeOfModes = isset($data['type_of_modes']) && !empty($data['type_of_modes']);
             Log::info("Price update decision", [
                 'has_any_price_field' => $hasAnyPriceField,
                 'has_type_of_modes' => $hasTypeOfModes,
                 'price_fields_found' => $priceFieldsToCheck
             ]);
-            
+
             // Also check if type_of_modes changed, which might require price updates
             $shouldUpdatePrices = $hasAnyPriceField || $hasTypeOfModes;
-            
+
             if ($shouldUpdatePrices) {
                 Log::info("Prices will be updated", [
                     'existing_prices_count' => $courseObj->prices()->count()
                 ]);
-                
+
                 // Delete existing prices
                 $deletedCount = $courseObj->prices()->delete();
                 Log::info("Deleted existing prices", ['deleted_count' => $deletedCount]);
@@ -497,7 +492,7 @@ class CourseController extends Controller
                     $modesToProcess = $courseObj->modes->pluck('id')->toArray();
                     Log::info("Using existing modes from course", ['modes' => $modesToProcess]);
                 }
-                
+
                 // Get mode IDs once
                 $onlineModeId = Mode::where('name', config('constants.modes.online'))->value('id');
                 $inPersonModeId = Mode::where('name', config('constants.modes.in_person'))->value('id');
@@ -505,7 +500,7 @@ class CourseController extends Controller
                     'online_mode_id' => $onlineModeId,
                     'in_person_mode_id' => $inPersonModeId
                 ]);
-                
+
                 $pricesCreated = 0;
                 BillingPeriod::all()->each(function ($billingPeriod) use ($courseObj, $data, $modesToProcess, $onlineModeId, $inPersonModeId, &$pricesCreated) {
                     $billingId = $billingPeriod->id;
@@ -514,7 +509,7 @@ class CourseController extends Controller
                     // Get price amounts from validated data
                     $onlineAmount = $data["amount_for_online_{$billingId}"] ?? null;
                     $inPersonAmount = $data["amount_for_in_person_{$billingId}"] ?? null;
-                    
+
                     if (in_array($onlineModeId, $modesToProcess) && !empty($onlineAmount)) {
                         $coursePriceData = [
                             'course_id' => $courseObj->id,
@@ -547,7 +542,7 @@ class CourseController extends Controller
                         ]);
                     }
                 });
-                
+
                 Log::info("Course prices updated for course ID: {$courseObj->id}", [
                     'price_fields_updated' => $priceFieldsToCheck,
                     'modes' => $modesToProcess,
@@ -562,10 +557,10 @@ class CourseController extends Controller
             if (isset($data['online_features_names']) && !empty($data['online_features_names'])) {
                 $onlineFeatures = is_array($data['online_features_names']) ? $data['online_features_names'] : [$data['online_features_names']];
                 $onlineFeatures = array_filter($onlineFeatures);
-                
+
                 // Delete existing online mode features
                 $courseObj->modefeatures()->whereNotNull('online_features_names')->delete();
-                
+
                 // Create new online features
                 foreach ($onlineFeatures as $name) {
                     if (!empty(trim($name))) {
@@ -581,10 +576,10 @@ class CourseController extends Controller
             if (isset($data['in_person_features_names']) && !empty($data['in_person_features_names'])) {
                 $inPersonFeatures = is_array($data['in_person_features_names']) ? $data['in_person_features_names'] : [$data['in_person_features_names']];
                 $inPersonFeatures = array_filter($inPersonFeatures);
-                
+
                 // Delete existing in-person mode features
                 $courseObj->modefeatures()->whereNotNull('in_person_features_names')->delete();
-                
+
                 // Create new in-person features
                 foreach ($inPersonFeatures as $name) {
                     if (!empty(trim($name))) {
@@ -603,22 +598,22 @@ class CourseController extends Controller
                 'files_all' => array_keys($request->allFiles()),
                 'files_collection' => $request->files->all()
             ]);
-            
+
             if ($request->hasFile('course_image')) {
                 try {
                     // Clear old media collection to remove old image from Cloudflare R2
                     $courseObj->clearMediaCollection('course_image');
-                    
+
                     // Use queue job for fast response and background R2 upload
                     $file = $request->file('course_image');
-                    
+
                     // Store file temporarily in local storage for queue processing
                     $tempPath = $file->store('temp/course_images', 'local');
-                    
+
                     if (!$tempPath) {
                         throw new Exception('Failed to store temporary image file.');
                     }
-                    
+
                     // Dispatch job for background processing
                     UploadCourseImageJob::dispatch(
                         $courseObj->id,
@@ -626,30 +621,30 @@ class CourseController extends Controller
                         $file->getClientOriginalName(),
                         $file->getMimeType()
                     );
-                    
+
                     Log::info("Course image upload job dispatched for course ID: {$courseObj->id}", [
                         'temp_path' => $tempPath,
                         'original_name' => $file->getClientOriginalName()
                     ]);
                 } catch (Exception $e) {
-                    Log::error("Failed to process course image upload. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}.");
+                    errorLog("Failed to process course image upload: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
                     // Don't fail the entire update if image upload fails
                 }
             }
 
             // Update relationships if provided
             Log::info("Checking relationship updates");
-            
+
             // Handle subject_ids array
             if (isset($data['subject_ids']) && !empty($data['subject_ids'])) {
                 $subjectIds = is_array($data['subject_ids']) ? $data['subject_ids'] : [$data['subject_ids']];
                 $subjectIds = array_filter($subjectIds);
-                
+
                 Log::info("Subject IDs received", [
                     'subject_ids' => $subjectIds,
                     'count' => count($subjectIds)
                 ]);
-                
+
                 if (!empty($subjectIds)) {
                     $subjectData = collect($subjectIds)->mapWithKeys(fn($id) => [
                         $id => ['created_at' => now(), 'updated_at' => now()]
@@ -665,12 +660,12 @@ class CourseController extends Controller
             if (isset($data['location_ids']) && !empty($data['location_ids'])) {
                 $locationIds = is_array($data['location_ids']) ? $data['location_ids'] : [$data['location_ids']];
                 $locationIds = array_filter($locationIds);
-                
+
                 Log::info("Location IDs received", [
                     'location_ids' => $locationIds,
                     'count' => count($locationIds)
                 ]);
-                
+
                 if (!empty($locationIds)) {
                     $locationData = collect($locationIds)->mapWithKeys(fn($id) => [
                         $id => ['created_at' => now(), 'updated_at' => now()]
@@ -686,12 +681,12 @@ class CourseController extends Controller
             if (isset($data['type_of_modes']) && !empty($data['type_of_modes'])) {
                 $modeIds = is_array($data['type_of_modes']) ? $data['type_of_modes'] : [$data['type_of_modes']];
                 $modeIds = array_filter($modeIds);
-                
+
                 Log::info("Type of modes received", [
                     'mode_ids' => $modeIds,
                     'count' => count($modeIds)
                 ]);
-                
+
                 if (!empty($modeIds)) {
                     $modeData = collect($modeIds)->mapWithKeys(fn($id) => [
                         $id => ['created_at' => now(), 'updated_at' => now()]
@@ -707,15 +702,15 @@ class CourseController extends Controller
             if (isset($data['features_names']) && !empty($data['features_names'])) {
                 $featuresNames = is_array($data['features_names']) ? $data['features_names'] : [$data['features_names']];
                 $featuresNames = array_filter($featuresNames);
-                
+
                 Log::info("Features names received", [
                     'features_names' => $featuresNames,
                     'count' => count($featuresNames)
                 ]);
-                
+
                 // Delete existing features
                 $courseObj->features()->delete();
-                
+
                 // Create new features
                 foreach ($featuresNames as $name) {
                     if (!empty(trim($name))) {
@@ -733,7 +728,7 @@ class CourseController extends Controller
             if (isset($data['acdemic_year_id']) && !empty($data['acdemic_year_id'])) {
                 $academicYearId = $data['acdemic_year_id'];
                 Log::info("Academic year ID received", ['academic_year_id' => $academicYearId]);
-                
+
                 $courseObj->acdemicyears()->sync([$academicYearId => [
                     'created_at' => now(),
                     'updated_at' => now(),
@@ -768,41 +763,20 @@ class CourseController extends Controller
                 Log::warning("Failed to dispatch Stripe update job for course ID: {$courseObj->id}. Message => {$e->getMessage()}");
                 // Don't fail the update if Stripe job dispatch fails
             }
-            
+
             Log::info("=== COURSE UPDATE COMPLETED SUCCESSFULLY ===", ['course_id' => $id]);
             return sendResponse('Course updated successfully.', 200);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             DB::rollBack();
-            Log::error("=== COURSE UPDATE FAILED: Course Not Found ===", [
-                'course_id' => $id,
-                'user_id' => Auth::id(),
-                'message' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine()
-            ]);
+            errorLog("Course update failed - Course Not Found. Course ID: {$id}, User ID: " . Auth::id() . ", Message: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
             return sendError('error', ['error' => 'Course not found.'], 404);
         } catch (\Illuminate\Validation\ValidationException $e) {
             DB::rollBack();
-            Log::error("=== COURSE UPDATE FAILED: Validation Error ===", [
-                'course_id' => $id,
-                'user_id' => Auth::id(),
-                'validation_errors' => $e->errors(),
-                'request_data' => $request->all()
-            ]);
+            errorLog("Course update failed - Validation Error. Course ID: {$id}, User ID: " . Auth::id() . ", Errors: " . json_encode($e->errors()));
             return sendError('validation_error', $e->errors(), 422);
         } catch (Exception $e) {
             DB::rollBack();
-            Log::error("=== COURSE UPDATE FAILED: Exception ===", [
-                'course_id' => $id,
-                'user_id' => Auth::id(),
-                'message' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-                'code' => $e->getCode(),
-                'trace' => $e->getTraceAsString(),
-                'request_data' => $request->all()
-            ]);
-            return sendError('error', ['error' => 'An error occurred during update. Please try again or contact support if the issue persists.'], 500);
+            return errorLog("Course update failed - Exception. Course ID: {$id}, User ID: " . Auth::id() . ", Message: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
 
@@ -838,8 +812,7 @@ class CourseController extends Controller
             return sendError('error', ['error' => 'Course not found.'], 404);
         } catch (Exception $e) {
             DB::rollBack();
-            Log::error("Failed to delete course. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
-            return sendError('error', ['error' => 'An error occurred during deletion.'], 500);
+            return errorLog("Failed to delete course: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
 
@@ -856,10 +829,10 @@ class CourseController extends Controller
             $courseObj = Course::where('created_id', Auth::id())->findOrFail($id);
             $action = $request->input('action');
             $currentStatus = $courseObj->status;
-            
+
             $activeStatus = config('constants.statuses.APPROVED'); // 2
             $inactiveStatus = config('constants.statuses.REJECTED'); // 3
-            
+
             $statusUpdated = false;
             $newStatus = $currentStatus;
             $statusLabel = '';
@@ -886,7 +859,7 @@ class CourseController extends Controller
                 }
             }
 
-            $message = $statusUpdated 
+            $message = $statusUpdated
                 ? "Course status updated to {$statusLabel} successfully."
                 : "Course is already {$statusLabel}.";
 
@@ -904,8 +877,7 @@ class CourseController extends Controller
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return sendError('error', ['error' => 'Course not found.'], 404);
         } catch (Exception $e) {
-            Log::error("Failed to toggle course status. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}, Code => {$e->getCode()}.");
-            return sendError('error', ['error' => 'An error occurred while toggling course status.'], 500);
+            return errorLog("Failed to toggle course status: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
 }

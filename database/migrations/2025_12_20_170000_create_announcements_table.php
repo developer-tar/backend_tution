@@ -14,7 +14,7 @@ return new class extends Migration {
             $table->id();
             $table->string('title');
             $table->text('message');
-            $table->enum('status', ['active', 'inactive'])->default('active');
+            $table->tinyInteger('status')->default(config('constants.announcement_status.draft'));
             $table->softDeletes();
             $table->timestamps();
         });
