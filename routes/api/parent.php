@@ -60,3 +60,10 @@ Route::post('request-paper-to-home', [RequestPaperToHomeController::class, 'stor
 
 // Announcements routes
 Route::get('announcements', [FrontendController::class, 'getAnnouncements']);
+
+// Certificates routes (for viewing student certificates)
+use App\Http\Controllers\Api\Parent\CertificateController;
+
+Route::get('certificates', [CertificateController::class, 'index']); // Get certificates for parent's students
+Route::get('certificates/{id}', [CertificateController::class, 'show']);
+Route::get('certificates/{id}/download', [CertificateController::class, 'download']);

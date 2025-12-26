@@ -229,11 +229,17 @@ function createOptions(array $optionIds, array $questionRecords, $courseRecord) 
         }
     }
 }
-function errorLog($message) {
+function errorLog($message, $showDetails = false) {
     $errorLog = new ErrorLog();
     $errorLog->error = $message;
     $errorLog->save();
     Log::error($message);
+    
+    // In debug mode or if showDetails is true, show actual error
+    if (config('app.debug') || $showDetails) {
+        return sendError('Error', ['error' => $message], 500);
+    }
+    
     return sendError('Error', ['error' => 'An error occurred.'], 500);
 }
 

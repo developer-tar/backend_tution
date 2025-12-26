@@ -1,4 +1,5 @@
 <?php
+
 use App\Http\Controllers\Api\Admin\Assign\MockExamController;
 use App\Http\Controllers\Api\Admin\Assign\PaperController;
 use App\Http\Controllers\Api\PaperPurchaseController;
@@ -10,6 +11,7 @@ use App\Http\Controllers\Api\Student\ContentController;
 use App\Http\Controllers\Api\Student\ViewedContentController;
 use App\Http\Controllers\Api\Student\WeeklyPerformanceController;
 use App\Http\Controllers\Api\Student\DashboardController;
+use App\Http\Controllers\Api\Student\CertificateController;
 use Illuminate\Support\Facades\Route;
 
 
@@ -83,6 +85,11 @@ Route::post('dashboard/subject', [DashboardController::class, 'getSubjectDashboa
 
 //announcements routes
 Route::get('announcements', [FrontendController::class, 'getAnnouncements']);
+
+//certificates routes
+Route::get('certificates', [CertificateController::class, 'index']);
+Route::get('certificates/{id}', [CertificateController::class, 'show']);
+Route::get('certificates/{id}/download', [CertificateController::class, 'download']);
 
 //hierarchical data routes
 Route::get('hierarchical-data', [AssignmentController::class, 'getHierarchicalData']);

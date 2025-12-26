@@ -7,6 +7,8 @@ use App\Http\Controllers\Api\Admin\Assign\{CourseController, TopicSubTopicContro
 use App\Http\Controllers\Api\Admin\Assign\MockExamController;
 use App\Http\Controllers\Api\Admin\Assign\PaperController;
 use App\Http\Controllers\Api\Admin\AnnouncementController;
+use App\Http\Controllers\Api\Admin\AwardController;
+use App\Http\Controllers\Api\Admin\CertificateController;
 use App\Http\Controllers\Api\Admin\MasterFormController;
 use App\Http\Controllers\Api\Admin\ParentController;
 use App\Http\Controllers\Api\Admin\PaperPurchaseController;
@@ -132,3 +134,11 @@ Route::get('announcements/filtered-items', [AnnouncementController::class, 'getF
 Route::get('announcements/classes', [AnnouncementController::class, 'getClasses']); // Get classes (timeslots) for a course
 Route::resource('announcements', AnnouncementController::class);
 //end announcement management routing
+
+//start awards and certificates management routing
+Route::resource('awards', AwardController::class);
+Route::resource('certificates', CertificateController::class);
+Route::get('certificates/{id}/download', [CertificateController::class, 'download']); // Download certificate PDF
+Route::patch('certificates/{id}/revoke', [CertificateController::class, 'revoke']); // Revoke certificate
+Route::get('certificates/students/list', [CertificateController::class, 'getStudents']); // Get students for certificate generation
+//end awards and certificates management routing
