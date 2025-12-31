@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Announcement;
 use App\Models\Role;
+use App\Models\User;
 use App\Models\AcdemicYear;
 use App\Models\Course;
 use App\Models\Paper;
@@ -12,10 +13,10 @@ use App\Models\MockExam;
 use App\Models\CourseTimeSlot;
 use App\Models\AcdemicCourse;
 use App\Models\Module;
+use App\Notifications\AnnouncementNotification;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Pagination\LengthAwarePaginator;
 
@@ -109,17 +110,53 @@ class AnnouncementController extends Controller
     public function store(Request $request): JsonResponse
     {
         try {
+            // Get admin role ID to exclude it
+            $adminRole = Role::where('name', config('constants.roles.ADMIN'))->first();
+            $adminRoleId = $adminRole ? $adminRole->id : null;
+
             $validated = $request->validate([
                 'title' => 'required|string|max:255',
                 'message' => 'required|string',
                 'status' => 'required|in:' . config('constants.announcement_status.draft') . ',' . config('constants.announcement_status.publish'),
-                'target_audience' => 'required|array|min:1',
-                'target_audience.*' => 'exists:roles,id',
+                'target_audience' => [
+                    'required',
+                    'array',
+                    'min:1',
+                    function ($attribute, $value, $fail) use ($adminRoleId) {
+                        if ($adminRoleId && in_array($adminRoleId, $value)) {
+                            $fail('The Admin role cannot be included in the target audience.');
+                        }
+                    },
+                ],
+                'target_audience.*' => [
+                    'exists:roles,id',
+                    function ($attribute, $value, $fail) use ($adminRoleId) {
+                        if ($adminRoleId && $value == $adminRoleId) {
+                            $fail('The Admin role cannot be included in the target audience.');
+                        }
+                    },
+                ],
                 'module_id' => 'nullable|exists:module,id',
                 'academic_year_id' => 'nullable|exists:acdemic_years,id',
                 'course_id' => 'nullable|exists:courses,id',
                 'class_id' => 'nullable|exists:course_time_slots,id',
             ]);
+
+            // Remove admin role from target audience if present (double check)
+            if ($adminRoleId) {
+                $validated['target_audience'] = array_values(array_filter($validated['target_audience'], function ($roleId) use ($adminRoleId) {
+                    return $roleId != $adminRoleId;
+                }));
+            }
+
+            // Validate that at least one role remains after filtering
+            if (empty($validated['target_audience'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed',
+                    'errors' => ['target_audience' => ['At least one target audience role (excluding Admin) is required.']],
+                ], 422);
+            }
 
             DB::beginTransaction();
 
@@ -139,6 +176,11 @@ class AnnouncementController extends Controller
             $announcement->load('roles:id,name');
 
             DB::commit();
+
+            // Send notifications if announcement is published
+            if ($announcement->status == config('constants.announcement_status.publish')) {
+                $this->sendAnnouncementNotifications($announcement);
+            }
 
             // Transform to include target_audience from roles
             $transformedAnnouncement = [
@@ -226,21 +268,61 @@ class AnnouncementController extends Controller
     public function update(Request $request, $id): JsonResponse
     {
         try {
+            // Get admin role ID to exclude it
+            $adminRole = Role::where('name', config('constants.roles.ADMIN'))->first();
+            $adminRoleId = $adminRole ? $adminRole->id : null;
+
             $validated = $request->validate([
                 'title' => 'sometimes|required|string|max:255',
                 'message' => 'sometimes|required|string',
                 'status' => 'sometimes|required|in:' . config('constants.announcement_status.draft') . ',' . config('constants.announcement_status.publish'),
-                'target_audience' => 'sometimes|required|array|min:1',
-                'target_audience.*' => 'exists:roles,id',
+                'target_audience' => [
+                    'sometimes',
+                    'required',
+                    'array',
+                    'min:1',
+                    function ($attribute, $value, $fail) use ($adminRoleId) {
+                        if ($adminRoleId && in_array($adminRoleId, $value)) {
+                            $fail('The Admin role cannot be included in the target audience.');
+                        }
+                    },
+                ],
+                'target_audience.*' => [
+                    'exists:roles,id',
+                    function ($attribute, $value, $fail) use ($adminRoleId) {
+                        if ($adminRoleId && $value == $adminRoleId) {
+                            $fail('The Admin role cannot be included in the target audience.');
+                        }
+                    },
+                ],
                 'module_id' => 'nullable|exists:module,id',
                 'academic_year_id' => 'nullable|exists:acdemic_years,id',
                 'course_id' => 'nullable|exists:courses,id',
                 'class_id' => 'nullable|exists:course_time_slots,id',
             ]);
 
+            // Remove admin role from target audience if present (double check)
+            if (isset($validated['target_audience']) && $adminRoleId) {
+                $validated['target_audience'] = array_values(array_filter($validated['target_audience'], function ($roleId) use ($adminRoleId) {
+                    return $roleId != $adminRoleId;
+                }));
+
+                // Validate that at least one role remains after filtering
+                if (empty($validated['target_audience'])) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Validation failed',
+                        'errors' => ['target_audience' => ['At least one target audience role (excluding Admin) is required.']],
+                    ], 422);
+                }
+            }
+
             DB::beginTransaction();
 
             $announcement = Announcement::findOrFail($id);
+
+            // Store original status before updating
+            $originalStatus = $announcement->status;
 
             // Update announcement fields
             if (isset($validated['title'])) {
@@ -274,7 +356,17 @@ class AnnouncementController extends Controller
 
             $announcement->load('roles:id,name');
 
+            // Check if status changed to published
+            $wasPublished = $originalStatus == config('constants.announcement_status.publish');
+            $isNowPublished = $announcement->status == config('constants.announcement_status.publish');
+            $statusChangedToPublished = !$wasPublished && $isNowPublished;
+
             DB::commit();
+
+            // Send notifications if announcement is newly published
+            if ($statusChangedToPublished || ($isNowPublished && isset($validated['target_audience']))) {
+                $this->sendAnnouncementNotifications($announcement);
+            }
 
             // Transform to include target_audience from roles
             $transformedAnnouncement = [
@@ -365,6 +457,7 @@ class AnnouncementController extends Controller
             }
 
             $roles = Role::select('id', 'name')
+                ->where('name', '!=', config('constants.roles.ADMIN')) // Exclude Admin role
                 ->whereNull('deleted_at') // Only active (non-deleted) roles
                 ->orderBy('name', 'asc')
                 ->get();
@@ -611,6 +704,51 @@ class AnnouncementController extends Controller
             ], 200);
         } catch (\Exception $e) {
             return errorLog("Failed to fetch classes: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+        }
+    }
+
+    /**
+     * Send announcement notifications to all users with the target roles
+     *
+     * @param Announcement $announcement
+     * @return void
+     */
+    protected function sendAnnouncementNotifications(Announcement $announcement): void
+    {
+        try {
+            // Reload announcement with roles to ensure we have the latest data
+            $announcement->load('roles:id,name');
+
+            // Get all role IDs from the announcement
+            $roleIds = $announcement->roles->pluck('id')->toArray();
+
+            if (empty($roleIds)) {
+                return;
+            }
+
+            // Get all users who have any of the target roles
+            $users = User::whereHas('roles', function ($query) use ($roleIds) {
+                $query->whereIn('roles.id', $roleIds);
+            })->whereNull('deleted_at') // Exclude soft-deleted users
+                ->get();
+
+            $successCount = 0;
+            $failureCount = 0;
+
+            // Send notification to each user
+            foreach ($users as $user) {
+                try {
+                    $user->notify(new AnnouncementNotification($announcement));
+                    $successCount++;
+                } catch (\Exception $e) {
+                    // Log individual notification failures but continue
+                    errorLog("Failed to send notification to user {$user->id}: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+                    $failureCount++;
+                }
+            }
+        } catch (\Exception $e) {
+            // Log error but don't fail the announcement creation/update
+            errorLog("Failed to send announcement notifications: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
 }

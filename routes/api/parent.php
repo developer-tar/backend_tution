@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\Parent\ParentStudentCourseController;
 use App\Http\Controllers\Api\Parent\RequestPaperToHomeController;
 use App\Http\Controllers\Api\Parent\StudentController;
 use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\NotificationController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('testing', function () {
@@ -60,6 +61,12 @@ Route::post('request-paper-to-home', [RequestPaperToHomeController::class, 'stor
 
 // Announcements routes
 Route::get('announcements', [FrontendController::class, 'getAnnouncements']);
+
+// Notifications routes
+Route::get('notifications', [NotificationController::class, 'index']);
+Route::get('notifications/unread-count', [NotificationController::class, 'getUnreadCount']);
+Route::post('notifications/{id}/mark-as-read', [NotificationController::class, 'markAsRead']);
+Route::post('notifications/mark-all-as-read', [NotificationController::class, 'markAllAsRead']);
 
 // Certificates routes (for viewing student certificates)
 use App\Http\Controllers\Api\Parent\CertificateController;

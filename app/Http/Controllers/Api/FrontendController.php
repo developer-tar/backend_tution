@@ -16,7 +16,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Log;
 
 class FrontendController extends Controller
 {
@@ -411,7 +410,6 @@ class FrontendController extends Controller
             $user = Auth::user();
 
             if (!$user) {
-                Log::warning("Announcements fetch failed: User not authenticated");
                 return sendError('error', ['error' => 'Unauthorized.'], 401);
             }
 
@@ -425,18 +423,16 @@ class FrontendController extends Controller
                 $userRoleNames = [];
             }
 
-            Log::info("Fetching announcements for user", [
-                'user_id' => $user->id,
-                'user_roles' => $userRoles,
-                'user_role_names' => $userRoleNames
-            ]);
-
             if (empty($userRoles)) {
-                Log::info("User has no roles assigned", ['user_id' => $user->id]);
                 return response()->json([
                     'success' => true,
-                    'message' => 'Announcements fetched successfully.',
+                    'message' => 'No roles assigned to your account. Please contact administrator.',
                     'data' => [],
+                    'debug' => [
+                        'user_id' => $user->id,
+                        'user_email' => $user->email,
+                        'issue' => 'User has no roles assigned'
+                    ]
                 ], 200);
             }
 
@@ -449,25 +445,25 @@ class FrontendController extends Controller
                     ->unique()
                     ->toArray();
 
-                Log::info("Announcement IDs from announcement_role table", [
-                    'user_id' => $user->id,
-                    'user_role_ids' => $userRoles,
-                    'announcement_ids' => $announcementIds,
-                    'count' => count($announcementIds)
-                ]);
-
-                // If no announcement IDs found, return empty array
+                // If no announcement IDs found, return empty array with debug info
                 if (empty($announcementIds)) {
-                    Log::info("No announcement IDs found for user roles", [
-                        'user_id' => $user->id,
-                        'user_role_ids' => $userRoles,
-                        'user_role_names' => $userRoleNames
-                    ]);
+                    // Check if there are any announcements at all
+                    $totalAnnouncements = DB::table('announcements')->whereNull('deleted_at')->count();
+                    $publishedAnnouncements = DB::table('announcements')
+                        ->where('status', config('constants.announcement_status.publish'))
+                        ->whereNull('deleted_at')
+                        ->count();
 
                     return response()->json([
                         'success' => true,
-                        'message' => 'Announcements fetched successfully.',
+                        'message' => 'No announcements found for your role(s).',
                         'data' => [],
+                        'debug' => [
+                            'user_roles' => $userRoleNames,
+                            'total_announcements_in_system' => $totalAnnouncements,
+                            'published_announcements_in_system' => $publishedAnnouncements,
+                            'issue' => 'No announcements are linked to your role(s) in the announcement_role table'
+                        ]
                     ], 200);
                 }
 
@@ -476,24 +472,19 @@ class FrontendController extends Controller
                 // Only get published announcements (status = config('constants.announcement_status.publish') = 1)
                 $announcements = Announcement::published()
                     ->whereIn('id', $announcementIds)
+                    ->whereNull('deleted_at') // Exclude soft-deleted announcements
                     ->with('roles:id,name')
                     ->latest()
                     ->get();
 
-                Log::info("Announcements loaded from announcements table", [
-                    'user_id' => $user->id,
-                    'announcement_ids' => $announcementIds,
-                    'announcements_count' => $announcements->count()
-                ]);
+                // Debug: Check if any announcements were filtered out due to status
+                $allAnnouncements = Announcement::whereIn('id', $announcementIds)
+                    ->whereNull('deleted_at')
+                    ->get();
             } catch (\Exception $e) {
                 errorLog("Error querying announcements for user {$user->id}: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
                 throw $e; // Re-throw to be caught by outer catch
             }
-
-            Log::info("Found announcements", [
-                'user_id' => $user->id,
-                'count' => $announcements->count()
-            ]);
 
             // Transform the data for frontend
             $transformedAnnouncements = $announcements->map(function ($announcement) {

@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\Student\ViewedContentController;
 use App\Http\Controllers\Api\Student\WeeklyPerformanceController;
 use App\Http\Controllers\Api\Student\DashboardController;
 use App\Http\Controllers\Api\Student\CertificateController;
+use App\Http\Controllers\Api\NotificationController;
 use Illuminate\Support\Facades\Route;
 
 
@@ -85,6 +86,12 @@ Route::post('dashboard/subject', [DashboardController::class, 'getSubjectDashboa
 
 //announcements routes
 Route::get('announcements', [FrontendController::class, 'getAnnouncements']);
+
+//notifications routes
+Route::get('notifications', [NotificationController::class, 'index']);
+Route::get('notifications/unread-count', [NotificationController::class, 'getUnreadCount']);
+Route::post('notifications/{id}/mark-as-read', [NotificationController::class, 'markAsRead']);
+Route::post('notifications/mark-all-as-read', [NotificationController::class, 'markAllAsRead']);
 
 //certificates routes
 Route::get('certificates', [CertificateController::class, 'index']);
