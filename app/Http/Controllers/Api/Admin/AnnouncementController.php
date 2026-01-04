@@ -3,6 +3,13 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\Admin\IndexAnnouncementRequest;
+use App\Http\Requests\Api\Admin\StoreAnnouncementRequest;
+use App\Http\Requests\Api\Admin\ShowAnnouncementRequest;
+use App\Http\Requests\Api\Admin\UpdateAnnouncementRequest;
+use App\Http\Requests\Api\Admin\DestroyAnnouncementRequest;
+use App\Http\Requests\Api\Admin\GetFilteredItemsRequest;
+use App\Http\Requests\Api\Admin\GetClassesRequest;
 use App\Models\Announcement;
 use App\Models\Role;
 use App\Models\User;
@@ -14,7 +21,6 @@ use App\Models\CourseTimeSlot;
 use App\Models\AcdemicCourse;
 use App\Models\Module;
 use App\Notifications\AnnouncementNotification;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -25,15 +31,16 @@ class AnnouncementController extends Controller
     /**
      * Display a listing of announcements.
      *
-     * @param Request $request
+     * @param IndexAnnouncementRequest $request
      * @return JsonResponse
      */
-    public function index(Request $request): JsonResponse
+    public function index(IndexAnnouncementRequest $request): JsonResponse
     {
         try {
-            $search = $request->input('search');
-            $status = $request->input('status');
-            $perPage = $request->input('per_page', 10);
+            $validated = $request->validated();
+            $search = $validated['search'] ?? null;
+            $status = $validated['status'] ?? null;
+            $perPage = $validated['per_page'] ?? 10;
 
             $announcements = Announcement::with('roles:id,name')
                 ->when($search, function ($query) use ($search) {
@@ -80,20 +87,12 @@ class AnnouncementController extends Controller
                 ]
             );
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Announcements fetched successfully.',
-                'data' => $transformedAnnouncements,
-            ], 200);
+            return sendResponse($transformedAnnouncements, 'Announcements fetched successfully.', 200);
         } catch (\Illuminate\Database\QueryException $e) {
             // Check if it's a table doesn't exist error
             if (str_contains($e->getMessage(), "doesn't exist") || str_contains($e->getMessage(), 'Base table or view not found')) {
                 errorLog("Announcements table doesn't exist. Migration may not have been run. Message => {$e->getMessage()}");
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Database tables not found. Please run the migration: php artisan migrate',
-                    'error' => 'Migration required'
-                ], 500);
+                return sendError('Database tables not found. Please run the migration: php artisan migrate', ['error' => 'Migration required'], 500);
             }
             return errorLog("Database error fetching announcements: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         } catch (\Exception $e) {
@@ -104,43 +103,17 @@ class AnnouncementController extends Controller
     /**
      * Store a newly created announcement.
      *
-     * @param Request $request
+     * @param StoreAnnouncementRequest $request
      * @return JsonResponse
      */
-    public function store(Request $request): JsonResponse
+    public function store(StoreAnnouncementRequest $request): JsonResponse
     {
         try {
             // Get admin role ID to exclude it
             $adminRole = Role::where('name', config('constants.roles.ADMIN'))->first();
             $adminRoleId = $adminRole ? $adminRole->id : null;
 
-            $validated = $request->validate([
-                'title' => 'required|string|max:255',
-                'message' => 'required|string',
-                'status' => 'required|in:' . config('constants.announcement_status.draft') . ',' . config('constants.announcement_status.publish'),
-                'target_audience' => [
-                    'required',
-                    'array',
-                    'min:1',
-                    function ($attribute, $value, $fail) use ($adminRoleId) {
-                        if ($adminRoleId && in_array($adminRoleId, $value)) {
-                            $fail('The Admin role cannot be included in the target audience.');
-                        }
-                    },
-                ],
-                'target_audience.*' => [
-                    'exists:roles,id',
-                    function ($attribute, $value, $fail) use ($adminRoleId) {
-                        if ($adminRoleId && $value == $adminRoleId) {
-                            $fail('The Admin role cannot be included in the target audience.');
-                        }
-                    },
-                ],
-                'module_id' => 'nullable|exists:module,id',
-                'academic_year_id' => 'nullable|exists:acdemic_years,id',
-                'course_id' => 'nullable|exists:courses,id',
-                'class_id' => 'nullable|exists:course_time_slots,id',
-            ]);
+            $validated = $request->validated();
 
             // Remove admin role from target audience if present (double check)
             if ($adminRoleId) {
@@ -151,11 +124,7 @@ class AnnouncementController extends Controller
 
             // Validate that at least one role remains after filtering
             if (empty($validated['target_audience'])) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Validation failed',
-                    'errors' => ['target_audience' => ['At least one target audience role (excluding Admin) is required.']],
-                ], 422);
+                return sendError('Validation failed', ['target_audience' => ['At least one target audience role (excluding Admin) is required.']], 422);
             }
 
             DB::beginTransaction();
@@ -199,18 +168,10 @@ class AnnouncementController extends Controller
                 'updated_at' => $announcement->updated_at,
             ];
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Announcement created successfully.',
-                'data' => $transformedAnnouncement,
-            ], 201);
+            return sendResponse($transformedAnnouncement, 'Announcement created successfully.', 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
             DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Validation failed',
-                'errors' => $e->errors(),
-            ], 422);
+            return sendError('Validation failed', $e->errors(), 422);
         } catch (\Exception $e) {
             DB::rollBack();
             return errorLog("Failed to create announcement: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
@@ -220,12 +181,13 @@ class AnnouncementController extends Controller
     /**
      * Display the specified announcement.
      *
-     * @param int $id
+     * @param ShowAnnouncementRequest $request
      * @return JsonResponse
      */
-    public function show($id): JsonResponse
+    public function show(ShowAnnouncementRequest $request): JsonResponse
     {
         try {
+            $id = $request->route('announcement') ?? $request->route('id');
             $announcement = Announcement::with('roles:id,name')->findOrFail($id);
 
             // Transform to include target_audience from roles
@@ -246,11 +208,7 @@ class AnnouncementController extends Controller
                 'deleted_at' => $announcement->deleted_at,
             ];
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Announcement fetched successfully.',
-                'data' => $transformedAnnouncement,
-            ], 200);
+            return sendResponse($transformedAnnouncement, 'Announcement fetched successfully.', 200);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return sendError('error', ['error' => 'Announcement not found.'], 404);
         } catch (\Exception $e) {
@@ -261,45 +219,20 @@ class AnnouncementController extends Controller
     /**
      * Update the specified announcement.
      *
-     * @param Request $request
-     * @param int $id
+     * @param UpdateAnnouncementRequest $request
      * @return JsonResponse
      */
-    public function update(Request $request, $id): JsonResponse
+    public function update(UpdateAnnouncementRequest $request): JsonResponse
     {
         try {
             // Get admin role ID to exclude it
             $adminRole = Role::where('name', config('constants.roles.ADMIN'))->first();
             $adminRoleId = $adminRole ? $adminRole->id : null;
 
-            $validated = $request->validate([
-                'title' => 'sometimes|required|string|max:255',
-                'message' => 'sometimes|required|string',
-                'status' => 'sometimes|required|in:' . config('constants.announcement_status.draft') . ',' . config('constants.announcement_status.publish'),
-                'target_audience' => [
-                    'sometimes',
-                    'required',
-                    'array',
-                    'min:1',
-                    function ($attribute, $value, $fail) use ($adminRoleId) {
-                        if ($adminRoleId && in_array($adminRoleId, $value)) {
-                            $fail('The Admin role cannot be included in the target audience.');
-                        }
-                    },
-                ],
-                'target_audience.*' => [
-                    'exists:roles,id',
-                    function ($attribute, $value, $fail) use ($adminRoleId) {
-                        if ($adminRoleId && $value == $adminRoleId) {
-                            $fail('The Admin role cannot be included in the target audience.');
-                        }
-                    },
-                ],
-                'module_id' => 'nullable|exists:module,id',
-                'academic_year_id' => 'nullable|exists:acdemic_years,id',
-                'course_id' => 'nullable|exists:courses,id',
-                'class_id' => 'nullable|exists:course_time_slots,id',
-            ]);
+            $validated = $request->validated();
+
+            // Remove announcement ID from validated data as it's only for validation
+            unset($validated['announcement']);
 
             // Remove admin role from target audience if present (double check)
             if (isset($validated['target_audience']) && $adminRoleId) {
@@ -309,16 +242,13 @@ class AnnouncementController extends Controller
 
                 // Validate that at least one role remains after filtering
                 if (empty($validated['target_audience'])) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Validation failed',
-                        'errors' => ['target_audience' => ['At least one target audience role (excluding Admin) is required.']],
-                    ], 422);
+                    return sendError('Validation failed', ['target_audience' => ['At least one target audience role (excluding Admin) is required.']], 422);
                 }
             }
 
             DB::beginTransaction();
 
+            $id = $request->route('announcement') ?? $request->route('id');
             $announcement = Announcement::findOrFail($id);
 
             // Store original status before updating
@@ -386,21 +316,13 @@ class AnnouncementController extends Controller
                 'deleted_at' => $announcement->deleted_at,
             ];
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Announcement updated successfully.',
-                'data' => $transformedAnnouncement,
-            ], 200);
+            return sendResponse($transformedAnnouncement, 'Announcement updated successfully.', 200);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             DB::rollBack();
             return sendError('error', ['error' => 'Announcement not found.'], 404);
         } catch (\Illuminate\Validation\ValidationException $e) {
             DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Validation failed',
-                'errors' => $e->errors(),
-            ], 422);
+            return sendError('Validation failed', $e->errors(), 422);
         } catch (\Exception $e) {
             DB::rollBack();
             return errorLog("Failed to update announcement: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
@@ -410,80 +332,27 @@ class AnnouncementController extends Controller
     /**
      * Remove the specified announcement.
      *
-     * @param int $id
+     * @param DestroyAnnouncementRequest $request
      * @return JsonResponse
      */
-    public function destroy($id): JsonResponse
+    public function destroy(DestroyAnnouncementRequest $request): JsonResponse
     {
         try {
             DB::beginTransaction();
 
+            $id = $request->route('announcement') ?? $request->route('id');
             $announcement = Announcement::findOrFail($id);
             $announcement->delete();
 
             DB::commit();
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Announcement deleted successfully.',
-            ], 200);
+            return sendResponse('delete', 'Announcement deleted successfully.', 200);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             DB::rollBack();
             return sendError('error', ['error' => 'Announcement not found.'], 404);
         } catch (\Exception $e) {
             DB::rollBack();
             return errorLog("Failed to delete announcement: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
-        }
-    }
-
-    /**
-     * Get all roles for target audience selection.
-     * Returns all active roles from the roles table.
-     *
-     * @return JsonResponse
-     */
-    public function getTargetAudienceRoles(): JsonResponse
-    {
-        try {
-            // Check if roles table exists
-            if (!Schema::hasTable('roles')) {
-                errorLog("Roles table doesn't exist. Migration may not have been run.");
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Roles table not found. Please run the migration: php artisan migrate',
-                    'data' => [],
-                    'error' => 'Migration required'
-                ], 500);
-            }
-
-            $roles = Role::select('id', 'name')
-                ->where('name', '!=', config('constants.roles.ADMIN')) // Exclude Admin role
-                ->whereNull('deleted_at') // Only active (non-deleted) roles
-                ->orderBy('name', 'asc')
-                ->get();
-
-            // Return empty array if no roles found, but still success
-            return response()->json([
-                'success' => true,
-                'message' => $roles->isEmpty()
-                    ? 'No roles found. Please seed the roles table.'
-                    : 'Target audience roles fetched successfully.',
-                'data' => $roles,
-            ], 200);
-        } catch (\Illuminate\Database\QueryException $e) {
-            // Check if it's a table doesn't exist error
-            if (str_contains($e->getMessage(), "doesn't exist") || str_contains($e->getMessage(), 'Base table or view not found')) {
-                errorLog("Roles table doesn't exist. Migration may not have been run. Message => {$e->getMessage()}");
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Roles table not found. Please run the migration: php artisan migrate',
-                    'data' => [],
-                    'error' => 'Migration required'
-                ], 500);
-            }
-            return errorLog("Database error fetching target audience roles: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
-        } catch (\Exception $e) {
-            return errorLog("Failed to fetch target audience roles: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
 
@@ -508,11 +377,7 @@ class AnnouncementController extends Controller
                     ];
                 });
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Academic years fetched successfully.',
-                'data' => $academicYears,
-            ], 200);
+            return sendResponse($academicYears, 'Academic years fetched successfully.', 200);
         } catch (\Exception $e) {
             return errorLog("Failed to fetch academic years: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
@@ -531,11 +396,7 @@ class AnnouncementController extends Controller
                 ->orderBy('name', 'asc')
                 ->get();
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Module modes fetched successfully.',
-                'data' => $modes,
-            ], 200);
+            return sendResponse($modes, 'Module modes fetched successfully.', 200);
         } catch (\Exception $e) {
             return errorLog("Failed to fetch module modes: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
@@ -544,30 +405,19 @@ class AnnouncementController extends Controller
     /**
      * Get courses/papers/mock exams filtered by mode and academic year.
      *
-     * @param Request $request
+     * @param GetFilteredItemsRequest $request
      * @return JsonResponse
      */
-    public function getFilteredItems(Request $request): JsonResponse
+    public function getFilteredItems(GetFilteredItemsRequest $request): JsonResponse
     {
         try {
-            $moduleId = $request->input('module_id');
-            $academicYearId = $request->input('academic_year_id');
-
-            if (!$moduleId) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Module ID is required.',
-                    'data' => [],
-                ], 422);
-            }
+            $validated = $request->validated();
+            $moduleId = $validated['module_id'];
+            $academicYearId = $validated['academic_year_id'] ?? null;
 
             $mode = Module::find($moduleId);
             if (!$mode) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Invalid mode ID.',
-                    'data' => [],
-                ], 422);
+                return sendError('Invalid mode ID.', [], 422);
             }
 
             $items = [];
@@ -622,18 +472,10 @@ class AnnouncementController extends Controller
                     break;
 
                 default:
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Invalid mode. Must be one of: courses, papers, mock_exams',
-                        'data' => [],
-                    ], 422);
+                    return sendError('Invalid mode. Must be one of: courses, papers, mock_exams', [], 422);
             }
 
-            return response()->json([
-                'success' => true,
-                'message' => ucfirst($mode->name) . ' fetched successfully.',
-                'data' => $items,
-            ], 200);
+            return sendResponse($items, ucfirst($mode->name) . ' fetched successfully.', 200);
         } catch (\Exception $e) {
             return errorLog("Failed to fetch filtered items: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
@@ -643,30 +485,15 @@ class AnnouncementController extends Controller
      * Get classes (timeslots) for a specific course and academic year.
      * Fetches class names from course_time_slots table based on course_id and academic_year_id.
      *
-     * @param Request $request
+     * @param GetClassesRequest $request
      * @return JsonResponse
      */
-    public function getClasses(Request $request): JsonResponse
+    public function getClasses(GetClassesRequest $request): JsonResponse
     {
         try {
-            $courseId = $request->input('course_id');
-            $academicYearId = $request->input('academic_year_id');
-
-            if (!$courseId) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Course ID is required.',
-                    'data' => [],
-                ], 422);
-            }
-
-            if (!$academicYearId) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Academic Year ID is required.',
-                    'data' => [],
-                ], 422);
-            }
+            $validated = $request->validated();
+            $courseId = $validated['course_id'];
+            $academicYearId = $validated['academic_year_id'];
 
             // First, find the academic_course_id by matching course_id and academic_year_id
             $academicCourse = AcdemicCourse::where('course_id', $courseId)
@@ -675,11 +502,7 @@ class AnnouncementController extends Controller
                 ->first();
 
             if (!$academicCourse) {
-                return response()->json([
-                    'success' => true,
-                    'message' => 'No academic course found for the selected course and academic year.',
-                    'data' => [],
-                ], 200);
+                return sendResponse([], 'No academic course found for the selected course and academic year.', 200);
             }
 
             // Fetch classes from course_time_slots where course_id and academic_course_id match
@@ -697,11 +520,7 @@ class AnnouncementController extends Controller
                     ];
                 });
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Classes fetched successfully.',
-                'data' => $classes,
-            ], 200);
+            return sendResponse($classes, 'Classes fetched successfully.', 200);
         } catch (\Exception $e) {
             return errorLog("Failed to fetch classes: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }

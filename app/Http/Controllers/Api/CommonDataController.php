@@ -48,26 +48,14 @@ class CommonDataController extends Controller
 
                     // Get only active (non-deleted) roles, excluding ADMIN, TUTOR, and SCHOOL
                     $data = Role::select('id', 'name')
-                        ->where('name', '!=', config('constants.roles.ADMIN'))
-                        ->where('name', '!=', config('constants.roles.TUTOR'))
-                        ->where('name', '!=', config('constants.roles.SCHOOL'))
+                        ->whereNot('name', config('constants.roles.ADMIN'))
+                        ->whereNot('name', config('constants.roles.TUTOR'))
+                        ->whereNot('name', config('constants.roles.SCHOOL'))
                         ->whereNull('deleted_at') // Only active (non-deleted) roles
                         ->orderBy('name', 'asc')
                         ->get();
-                } elseif ($param === 'RolesAll') {
-                    // Check if roles table exists
-                    if (!Schema::hasTable('roles')) {
-                        errorLog("Roles table doesn't exist when trying to fetch all roles.");
-                        return sendError('Error', ['error' => 'Roles table not found. Please run the migration: php artisan migrate'], 500);
-                    }
-
-                    // Get all active (non-deleted) roles for announcements target audience
-                    // This includes ADMIN, TUTOR, SCHOOL, STUDENT, PARENT - all roles
-                    $data = Role::select('id', 'name')
-                        ->whereNull('deleted_at') // Only active (non-deleted) roles
-                        ->orderBy('name', 'asc')
-                        ->get();
-                }
+                } 
+                
                 if ($param === 'AcdemicYears') {
                     $data = AcdemicYear::all();
                 } elseif ($param === 'ModuleModes') {

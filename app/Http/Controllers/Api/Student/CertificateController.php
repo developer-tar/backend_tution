@@ -27,8 +27,7 @@ class CertificateController extends Controller
             }
 
             $certificates = Certificate::with(['award'])
-                ->where('student_id', $user->id)
-                ->where('status', 1) // Only active certificates
+                ->where(['student_id', $user->id , 'status', 1]) // Only active certificates
                 ->latest('issued_date')
                 ->get();
 
@@ -91,8 +90,7 @@ class CertificateController extends Controller
             }
 
             $certificate = Certificate::where('id', $id)
-                ->where('student_id', $user->id)
-                ->where('status', 1)
+                ->where(['student_id', $user->id,'status', 1])
                 ->firstOrFail();
 
             if (!$certificate->pdf_path || !Storage::exists($certificate->pdf_path)) {

@@ -3,12 +3,17 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\Admin\IndexCertificateRequest;
+use App\Http\Requests\Api\Admin\StoreCertificateRequest;
+use App\Http\Requests\Api\Admin\ShowCertificateRequest;
+use App\Http\Requests\Api\Admin\DownloadCertificateRequest;
+use App\Http\Requests\Api\Admin\RevokeCertificateRequest;
+use App\Http\Requests\Api\Admin\DestroyCertificateRequest;
 use App\Models\Certificate;
 use App\Models\Award;
 use App\Models\User;
 use App\Models\Role;
 use App\Services\CertificateGenerationService;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -25,17 +30,18 @@ class CertificateController extends Controller
     /**
      * Display a listing of certificates.
      *
-     * @param Request $request
+     * @param IndexCertificateRequest $request
      * @return JsonResponse
      */
-    public function index(Request $request): JsonResponse
+    public function index(IndexCertificateRequest $request): JsonResponse
     {
         try {
-            $search = $request->input('search');
-            $awardId = $request->input('award_id');
-            $studentId = $request->input('student_id');
-            $status = $request->input('status');
-            $perPage = $request->input('per_page', 10);
+            $validated = $request->validated();
+            $search = $validated['search'] ?? null;
+            $awardId = $validated['award_id'] ?? null;
+            $studentId = $validated['student_id'] ?? null;
+            $status = $validated['status'] ?? null;
+            $perPage = $validated['per_page'] ?? 10;
 
             $certificates = Certificate::with(['award', 'student'])
                 ->when($search, function ($query) use ($search) {
@@ -63,11 +69,7 @@ class CertificateController extends Controller
                 ->latest()
                 ->paginate($perPage);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Certificates fetched successfully.',
-                'data' => $certificates,
-            ], 200);
+            return sendResponse($certificates, 'Certificates fetched successfully.', 200);
         } catch (\Exception $e) {
             return errorLog("Failed to fetch certificates: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
@@ -76,18 +78,13 @@ class CertificateController extends Controller
     /**
      * Generate and store a new certificate for a student.
      *
-     * @param Request $request
+     * @param StoreCertificateRequest $request
      * @return JsonResponse
      */
-    public function store(Request $request): JsonResponse
+    public function store(StoreCertificateRequest $request): JsonResponse
     {
         try {
-            $validated = $request->validate([
-                'award_id' => 'required|exists:awards,id',
-                'student_id' => 'required|exists:users,id',
-                'issued_date' => 'nullable|date',
-                'achievement_details' => 'nullable|string',
-            ]);
+            $validated = $request->validated();
 
             DB::beginTransaction();
 
@@ -102,11 +99,7 @@ class CertificateController extends Controller
 
             if ($existingCertificate) {
                 DB::rollBack();
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Certificate already exists for this student and award.',
-                    'data' => $existingCertificate,
-                ], 409);
+                return sendError('Certificate already exists for this student and award.', $existingCertificate, 409);
             }
 
             // Generate certificate number
@@ -135,18 +128,10 @@ class CertificateController extends Controller
 
             $certificate->load(['award', 'student']);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Certificate generated successfully.',
-                'data' => $certificate,
-            ], 201);
+            return sendResponse($certificate, 'Certificate generated successfully.', 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
             DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Validation failed',
-                'errors' => $e->errors(),
-            ], 422);
+            return sendError('Validation failed', $e->errors(), 422);
         } catch (\Exception $e) {
             DB::rollBack();
             return errorLog("Failed to create certificate: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
@@ -156,19 +141,16 @@ class CertificateController extends Controller
     /**
      * Display the specified certificate.
      *
-     * @param int $id
+     * @param ShowCertificateRequest $request
      * @return JsonResponse
      */
-    public function show($id): JsonResponse
+    public function show(ShowCertificateRequest $request): JsonResponse
     {
         try {
+            $id = $request->route('certificate') ?? $request->route('id');
             $certificate = Certificate::with(['award', 'student'])->findOrFail($id);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Certificate fetched successfully.',
-                'data' => $certificate,
-            ], 200);
+            return sendResponse($certificate, 'Certificate fetched successfully.', 200);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return sendError('error', ['error' => 'Certificate not found.'], 404);
         } catch (\Exception $e) {
@@ -179,20 +161,19 @@ class CertificateController extends Controller
     /**
      * Download the certificate PDF.
      *
-     * @param int $id
+     * @param DownloadCertificateRequest $request
      * @return \Illuminate\Http\Response
      */
-    public function download($id)
+    public function download(DownloadCertificateRequest $request)
     {
         try {
+            $id = $request->route('id');
             $certificate = Certificate::findOrFail($id);
 
             if (!$certificate->pdf_path || !Storage::exists($certificate->pdf_path)) {
                 // Check if DomPDF is installed before trying to regenerate
                 if (!class_exists('Barryvdh\DomPDF\Facade\Pdf')) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'DomPDF package is not installed',
+                    return sendError('DomPDF package is not installed', [
                         'error' => 'Please install DomPDF package by running: composer require barryvdh/laravel-dompdf in the backend_tution directory, then run: composer install',
                         'instructions' => [
                             '1. Open terminal/command prompt',
@@ -213,9 +194,7 @@ class CertificateController extends Controller
         } catch (\Exception $e) {
             // Check if error is about DomPDF not being installed
             if (str_contains($e->getMessage(), 'DomPDF package is not installed')) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'DomPDF package is not installed',
+                return sendError('DomPDF package is not installed', [
                     'error' => $e->getMessage(),
                     'instructions' => [
                         '1. Open terminal/command prompt',
@@ -234,23 +213,21 @@ class CertificateController extends Controller
     /**
      * Revoke a certificate.
      *
-     * @param int $id
+     * @param RevokeCertificateRequest $request
      * @return JsonResponse
      */
-    public function revoke($id): JsonResponse
+    public function revoke(RevokeCertificateRequest $request): JsonResponse
     {
         try {
             DB::beginTransaction();
 
+            $id = $request->route('id');
             $certificate = Certificate::findOrFail($id);
             $certificate->update(['status' => 0]);
 
             DB::commit();
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Certificate revoked successfully.',
-            ], 200);
+            return sendResponse('delete', 'Certificate revoked successfully.', 200);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             DB::rollBack();
             return sendError('error', ['error' => 'Certificate not found.'], 404);
@@ -263,14 +240,15 @@ class CertificateController extends Controller
     /**
      * Delete the specified certificate.
      *
-     * @param int $id
+     * @param DestroyCertificateRequest $request
      * @return JsonResponse
      */
-    public function destroy($id): JsonResponse
+    public function destroy(DestroyCertificateRequest $request): JsonResponse
     {
         try {
             DB::beginTransaction();
 
+            $id = $request->route('certificate') ?? $request->route('id');
             $certificate = Certificate::findOrFail($id);
 
             // Delete PDF file if exists
@@ -282,10 +260,7 @@ class CertificateController extends Controller
 
             DB::commit();
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Certificate deleted successfully.',
-            ], 200);
+            return sendResponse('delete', 'Certificate deleted successfully.', 200);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             DB::rollBack();
             return sendError('error', ['error' => 'Certificate not found.'], 404);
@@ -311,11 +286,7 @@ class CertificateController extends Controller
                 ->orderBy('last_name', 'asc')
                 ->get();
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Students fetched successfully.',
-                'data' => $students,
-            ], 200);
+            return sendResponse($students, 'Students fetched successfully.', 200);
         } catch (\Exception $e) {
             return errorLog("Failed to fetch students: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }

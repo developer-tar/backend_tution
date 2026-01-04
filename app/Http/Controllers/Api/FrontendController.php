@@ -14,7 +14,6 @@ use App\Models\User;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class FrontendController extends Controller
@@ -436,21 +435,24 @@ class FrontendController extends Controller
                 ], 200);
             }
 
-            // Step 2: Query announcement_role table to find announcement_ids 
-            // where role_id matches the logged-in user's role IDs
+            // Step 2: Query announcements that have roles matching the logged-in user's role IDs
+            // using the relationship instead of direct DB query
             try {
-                $announcementIds = DB::table('announcement_role')
-                    ->whereIn('role_id', $userRoles)
-                    ->pluck('announcement_id')
-                    ->unique()
-                    ->toArray();
+                // Query announcements that have any of the user's roles using whereHas
+                $announcements = Announcement::published()
+                    ->whereHas('roles', function ($query) use ($userRoles) {
+                        $query->whereIn('roles.id', $userRoles);
+                    })
+                    ->whereNull('deleted_at') // Exclude soft-deleted announcements
+                    ->with('roles:id,name')
+                    ->latest()
+                    ->get();
 
-                // If no announcement IDs found, return empty array with debug info
-                if (empty($announcementIds)) {
-                    // Check if there are any announcements at all
-                    $totalAnnouncements = DB::table('announcements')->whereNull('deleted_at')->count();
-                    $publishedAnnouncements = DB::table('announcements')
-                        ->where('status', config('constants.announcement_status.publish'))
+                // If no announcements found, return empty array with debug info
+                if ($announcements->isEmpty()) {
+                    // Check if there are any announcements at all using model
+                    $totalAnnouncements = Announcement::whereNull('deleted_at')->count();
+                    $publishedAnnouncements = Announcement::published()
                         ->whereNull('deleted_at')
                         ->count();
 
@@ -466,21 +468,6 @@ class FrontendController extends Controller
                         ]
                     ], 200);
                 }
-
-                // Step 3: Load announcement details from announcements table
-                // using the announcement_ids found in announcement_role table
-                // Only get published announcements (status = config('constants.announcement_status.publish') = 1)
-                $announcements = Announcement::published()
-                    ->whereIn('id', $announcementIds)
-                    ->whereNull('deleted_at') // Exclude soft-deleted announcements
-                    ->with('roles:id,name')
-                    ->latest()
-                    ->get();
-
-                // Debug: Check if any announcements were filtered out due to status
-                $allAnnouncements = Announcement::whereIn('id', $announcementIds)
-                    ->whereNull('deleted_at')
-                    ->get();
             } catch (\Exception $e) {
                 errorLog("Error querying announcements for user {$user->id}: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
                 throw $e; // Re-throw to be caught by outer catch

@@ -3,8 +3,12 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\Admin\IndexAwardRequest;
+use App\Http\Requests\Api\Admin\StoreAwardRequest;
+use App\Http\Requests\Api\Admin\ShowAwardRequest;
+use App\Http\Requests\Api\Admin\UpdateAwardRequest;
+use App\Http\Requests\Api\Admin\DestroyAwardRequest;
 use App\Models\Award;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -15,25 +19,22 @@ class AwardController extends Controller
     /**
      * Display a listing of awards.
      *
-     * @param Request $request
+     * @param IndexAwardRequest $request
      * @return JsonResponse
      */
-    public function index(Request $request): JsonResponse
+    public function index(IndexAwardRequest $request): JsonResponse
     {
         // Check if awards table exists
         if (!Schema::hasTable('awards')) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Database table not found',
-                'error' => 'The awards table does not exist. Please run the migration: php artisan migrate',
-            ], 500);
+            return sendError('Database table not found', ['error' => 'The awards table does not exist. Please run the migration: php artisan migrate'], 500);
         }
 
         try {
-            $search = $request->input('search');
-            $status = $request->input('status');
-            $type = $request->input('type');
-            $perPage = $request->input('per_page', 10);
+            $validated = $request->validated();
+            $search = $validated['search'] ?? null;
+            $status = $validated['status'] ?? null;
+            $type = $validated['type'] ?? null;
+            $perPage = $validated['per_page'] ?? 10;
 
             $awards = Award::withCount('certificates')
                 ->when($search, function ($query) use ($search) {
@@ -51,11 +52,7 @@ class AwardController extends Controller
                 ->latest()
                 ->paginate($perPage);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Awards fetched successfully.',
-                'data' => $awards,
-            ], 200);
+            return sendResponse($awards, 'Awards fetched successfully.', 200);
         } catch (\Exception $e) {
             return errorLog("Failed to fetch awards: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
@@ -64,29 +61,18 @@ class AwardController extends Controller
     /**
      * Store a newly created award.
      *
-     * @param Request $request
+     * @param StoreAwardRequest $request
      * @return JsonResponse
      */
-    public function store(Request $request): JsonResponse
+    public function store(StoreAwardRequest $request): JsonResponse
     {
         // Check if awards table exists
         if (!Schema::hasTable('awards')) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Database table not found',
-                'error' => 'The awards table does not exist. Please run the migration: php artisan migrate',
-            ], 500);
+            return sendError('Database table not found', ['error' => 'The awards table does not exist. Please run the migration: php artisan migrate'], 500);
         }
 
         try {
-            $validated = $request->validate([
-                'name' => 'required|string|max:255',
-                'description' => 'nullable|string',
-                'type' => 'nullable|string|max:255',
-                'criteria' => 'nullable|string',
-                'certificate_template' => 'nullable|string|max:255',
-                'status' => 'nullable|integer|in:0,1',
-            ]);
+            $validated = $request->validated();
 
             DB::beginTransaction();
 
@@ -101,36 +87,22 @@ class AwardController extends Controller
 
             DB::commit();
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Award created successfully.',
-                'data' => $award,
-            ], 201);
+            return sendResponse($award, 'Award created successfully.', 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
             DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Validation failed',
-                'errors' => $e->errors(),
-            ], 422);
+            return sendError('Validation failed', $e->errors(), 422);
         } catch (\Illuminate\Database\QueryException $e) {
             DB::rollBack();
             // Check if it's a table doesn't exist error
             if (str_contains($e->getMessage(), "doesn't exist") || str_contains($e->getMessage(), 'Base table or view not found')) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Database table not found. Please run migrations: php artisan migrate',
-                    'error' => 'The awards table does not exist. Please run the migration first.',
-                ], 500);
+                return sendError('Database table not found. Please run migrations: php artisan migrate', ['error' => 'The awards table does not exist. Please run the migration first.'], 500);
             }
             return errorLog("Failed to create award: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         } catch (\Exception $e) {
             DB::rollBack();
             // In development, show the actual error
             if (config('app.debug')) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Failed to create award',
+                return sendError('Failed to create award', [
                     'error' => $e->getMessage(),
                     'file' => $e->getFile(),
                     'line' => $e->getLine(),
@@ -143,19 +115,16 @@ class AwardController extends Controller
     /**
      * Display the specified award.
      *
-     * @param int $id
+     * @param ShowAwardRequest $request
      * @return JsonResponse
      */
-    public function show($id): JsonResponse
+    public function show(ShowAwardRequest $request): JsonResponse
     {
         try {
+            $id = $request->route('award') ?? $request->route('id');
             $award = Award::withCount('certificates')->findOrFail($id);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Award fetched successfully.',
-                'data' => $award,
-            ], 200);
+            return sendResponse($award, 'Award fetched successfully.', 200);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return sendError('error', ['error' => 'Award not found.'], 404);
         } catch (\Exception $e) {
@@ -166,45 +135,33 @@ class AwardController extends Controller
     /**
      * Update the specified award.
      *
-     * @param Request $request
-     * @param int $id
+     * @param UpdateAwardRequest $request
      * @return JsonResponse
      */
-    public function update(Request $request, $id): JsonResponse
+    public function update(UpdateAwardRequest $request): JsonResponse
     {
         try {
-            $validated = $request->validate([
-                'name' => 'sometimes|required|string|max:255',
-                'description' => 'nullable|string',
-                'type' => 'nullable|string|max:255',
-                'criteria' => 'nullable|string',
-                'certificate_template' => 'nullable|string|max:255',
-                'status' => 'nullable|integer|in:0,1',
-            ]);
+            $validated = $request->validated();
+
+            // Remove award ID from validated data as it's only for validation
+            unset($validated['award']);
 
             DB::beginTransaction();
 
+            $id = $request->route('award') ?? $request->route('id');
             $award = Award::findOrFail($id);
 
             $award->update($validated);
 
             DB::commit();
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Award updated successfully.',
-                'data' => $award,
-            ], 200);
+            return sendResponse($award, 'Award updated successfully.', 200);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             DB::rollBack();
             return sendError('error', ['error' => 'Award not found.'], 404);
         } catch (\Illuminate\Validation\ValidationException $e) {
             DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Validation failed',
-                'errors' => $e->errors(),
-            ], 422);
+            return sendError('Validation failed', $e->errors(), 422);
         } catch (\Exception $e) {
             DB::rollBack();
             return errorLog("Failed to update award: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
@@ -214,23 +171,21 @@ class AwardController extends Controller
     /**
      * Remove the specified award.
      *
-     * @param int $id
+     * @param DestroyAwardRequest $request
      * @return JsonResponse
      */
-    public function destroy($id): JsonResponse
+    public function destroy(DestroyAwardRequest $request): JsonResponse
     {
         try {
             DB::beginTransaction();
 
+            $id = $request->route('award') ?? $request->route('id');
             $award = Award::findOrFail($id);
             $award->delete();
 
             DB::commit();
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Award deleted successfully.',
-            ], 200);
+            return sendResponse('delete', 'Award deleted successfully.', 200);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             DB::rollBack();
             return sendError('error', ['error' => 'Award not found.'], 404);
