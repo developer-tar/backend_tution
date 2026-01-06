@@ -1,14 +1,18 @@
 <?php
+
 use App\Http\Controllers\Api\Admin\Assign\MockExamController;
 use App\Http\Controllers\Api\Admin\Assign\PaperController;
 use App\Http\Controllers\Api\PaperPurchaseController;
 use App\Http\Controllers\Api\Parent\StudentController;
+use App\Http\Controllers\Api\FrontendController;
 use App\Http\Controllers\Api\Student\AssignmentController;
 use App\Http\Controllers\Api\Student\TestResultController;
 use App\Http\Controllers\Api\Student\ContentController;
 use App\Http\Controllers\Api\Student\ViewedContentController;
 use App\Http\Controllers\Api\Student\WeeklyPerformanceController;
 use App\Http\Controllers\Api\Student\DashboardController;
+use App\Http\Controllers\Api\Student\CertificateController;
+use App\Http\Controllers\Api\NotificationController;
 use Illuminate\Support\Facades\Route;
 
 
@@ -79,6 +83,20 @@ Route::post('weekly-performance', [WeeklyPerformanceController::class, 'getWeekl
 //dashboard routes
 Route::get('dashboard', [DashboardController::class, 'getDashboardData']);
 Route::post('dashboard/subject', [DashboardController::class, 'getSubjectDashboardData']);
+
+//announcements routes
+Route::get('announcements', [FrontendController::class, 'getAnnouncements']);
+
+//notifications routes
+Route::get('notifications', [NotificationController::class, 'index']);
+Route::get('notifications/unread-count', [NotificationController::class, 'getUnreadCount']);
+Route::post('notifications/{id}/mark-as-read', [NotificationController::class, 'markAsRead']);
+Route::post('notifications/mark-all-as-read', [NotificationController::class, 'markAllAsRead']);
+
+//certificates routes
+Route::get('certificates', [CertificateController::class, 'index']);
+Route::get('certificates/{id}', [CertificateController::class, 'show']);
+Route::get('certificates/{id}/download', [CertificateController::class, 'download']);
 
 //hierarchical data routes
 Route::get('hierarchical-data', [AssignmentController::class, 'getHierarchicalData']);
