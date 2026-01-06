@@ -6,6 +6,9 @@ use App\Http\Controllers\Api\Admin\Assign\{AssignedStudentCourseController, Assi
 use App\Http\Controllers\Api\Admin\Assign\{CourseController, TopicSubTopicController, TimeSlotController};
 use App\Http\Controllers\Api\Admin\Assign\MockExamController;
 use App\Http\Controllers\Api\Admin\Assign\PaperController;
+use App\Http\Controllers\Api\Admin\AnnouncementController;
+use App\Http\Controllers\Api\Admin\AwardController;
+use App\Http\Controllers\Api\Admin\CertificateController;
 use App\Http\Controllers\Api\Admin\MasterFormController;
 use App\Http\Controllers\Api\Admin\ParentController;
 use App\Http\Controllers\Api\Admin\PaperPurchaseController;
@@ -122,3 +125,19 @@ Route::delete('student/{student}', [StudentController::class, 'destroy']); // De
 //start paper purchase management routing
 Route::get('paper-purchases', [PaperPurchaseController::class, 'index']); // Get aggregated paper purchases list
 //end paper purchase management routing
+
+//start announcement management routing
+Route::get('announcements/module-modes', [AnnouncementController::class, 'getModuleModes']); // Get module modes
+Route::get('announcements/academic-years', [AnnouncementController::class, 'getAcademicYears']); // Get academic years
+Route::get('announcements/filtered-items', [AnnouncementController::class, 'getFilteredItems']); // Get courses/papers/mock exams filtered by mode and academic year
+Route::get('announcements/classes', [AnnouncementController::class, 'getClasses']); // Get classes (timeslots) for a course
+Route::resource('announcements', AnnouncementController::class);
+//end announcement management routing
+
+//start awards and certificates management routing
+Route::resource('awards', AwardController::class);
+Route::resource('certificates', CertificateController::class);
+Route::get('certificates/{id}/download', [CertificateController::class, 'download']); // Download certificate PDF
+Route::patch('certificates/{id}/revoke', [CertificateController::class, 'revoke']); // Revoke certificate
+Route::get('certificates/students/list', [CertificateController::class, 'getStudents']); // Get students for certificate generation
+//end awards and certificates management routing

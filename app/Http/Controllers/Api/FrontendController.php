@@ -4,17 +4,17 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\SlugValidateRequest;
+use App\Models\Announcement;
 use App\Models\Course;
 use App\Models\MockExam;
 use App\Models\MockExamCategory;
 use App\Models\Paper;
+use App\Models\Role;
 use App\Models\User;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Log;
 
 class FrontendController extends Controller
 {
@@ -29,8 +29,7 @@ class FrontendController extends Controller
                 'data' => $courses,
             ]);
         } catch (Exception $e) {
-            Log::error("Failed to fetch courses: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
-            return sendError('error', ['error' => 'An error occurred while fetching courses.'], 500);
+            return errorLog("Failed to fetch courses: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
 
@@ -45,8 +44,7 @@ class FrontendController extends Controller
                 'data' => $courses,
             ]);
         } catch (Exception $e) {
-            Log::error("Failed to fetch course by slug: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
-            return sendError('error', ['error' => 'An error occurred while fetching course.'], 500);
+            return errorLog("Failed to fetch course by slug: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
 
@@ -104,7 +102,7 @@ class FrontendController extends Controller
 
         $withoutPagination = [];
         if ($limitDescription === false) {
-        
+
             $withoutPagination = [
                 'online_mode_features' => $course->modefeatures
                     ->pluck('online_features_names')
@@ -217,11 +215,9 @@ class FrontendController extends Controller
                         'slug' => $exam->slug,
                     ];
                 });
-            return sendResponse($mockExams, 'Mock exams fetched successfully.');    
-        
+            return sendResponse($mockExams, 'Mock exams fetched successfully.');
         } catch (Exception $e) {
             return errorLog("Failed to fetch mock exams: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
-         
         }
     }
 
@@ -238,7 +234,7 @@ class FrontendController extends Controller
                 'questions:id,mock_exam_id',
             ])
                 ->where('status', config('constants.statuses.APPROVED'))
-                ->where('slug',$slug)
+                ->where('slug', $slug)
                 ->first();
 
             if (!$mockExam) {
@@ -262,7 +258,6 @@ class FrontendController extends Controller
                 'stripe_price_id' => $mockExam->stripe_price_id,
             ];
             return sendResponse($data, 'Mock exam details fetched successfully.');
-            
         } catch (Exception $e) {
             return errorLog("Failed to fetch mock exam details: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
@@ -279,7 +274,6 @@ class FrontendController extends Controller
                 ->orderBy('name')
                 ->get();
             return sendResponse($categories, 'Categories fetched successfully.');
-            
         } catch (Exception $e) {
             return errorLog("Failed to fetch categories: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
@@ -304,7 +298,7 @@ class FrontendController extends Controller
                 ->through(function ($paper) {
                     $tableMap = config('constants.table_map');
                     $productTypeKey = array_search('papers', $tableMap) ?: 'papers';
-                   
+
                     return [
                         'id' => $paper->id,
                         'name' => $paper->name,
@@ -353,7 +347,7 @@ class FrontendController extends Controller
 
             $tableMap = config('constants.table_map');
             $productTypeKey = array_search('papers', $tableMap) ?: 'papers';
-            
+
             $data = [
                 'id' => $paper->id,
                 'name' => $paper->name,
@@ -389,9 +383,121 @@ class FrontendController extends Controller
                 ->orderBy('name')
                 ->get();
             return sendResponse($categories, 'Categories fetched successfully.');
-            
         } catch (Exception $e) {
             return errorLog("Failed to fetch categories: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+        }
+    }
+
+    /**
+     * Get announcements for the authenticated user's dashboard
+     * 
+     * Logic:
+     * 1. Get the logged-in user's role IDs
+     * 2. Query announcement_role table to find announcement_ids where role_id matches user's role IDs
+     * 3. Load announcement details from announcements table using those announcement_ids
+     * 4. Only return published announcements (status = config('constants.announcement_status.publish') = 1)
+     * 
+     * Status values:
+     * - draft = 0 (config('constants.announcement_status.draft'))
+     * - publish = 1 (config('constants.announcement_status.publish'))
+     * 
+     * This ensures users only see announcements targeted to their specific role(s)
+     */
+    public function getAnnouncements(Request $request)
+    {
+        try {
+            $user = Auth::user();
+
+            if (!$user) {
+                return sendError('error', ['error' => 'Unauthorized.'], 401);
+            }
+
+            // Step 1: Get the logged-in user's role IDs
+            try {
+                $userRoles = $user->roles()->pluck('id')->toArray();
+                $userRoleNames = $user->roles()->pluck('name')->toArray();
+            } catch (\Exception $e) {
+                errorLog("Error fetching user roles for user {$user->id}: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+                $userRoles = [];
+                $userRoleNames = [];
+            }
+
+            if (empty($userRoles)) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'No roles assigned to your account. Please contact administrator.',
+                    'data' => [],
+                    'debug' => [
+                        'user_id' => $user->id,
+                        'user_email' => $user->email,
+                        'issue' => 'User has no roles assigned'
+                    ]
+                ], 200);
+            }
+
+            // Step 2: Query announcements that have roles matching the logged-in user's role IDs
+            // using the relationship instead of direct DB query
+            try {
+                // Query announcements that have any of the user's roles using whereHas
+                $announcements = Announcement::published()
+                    ->whereHas('roles', function ($query) use ($userRoles) {
+                        $query->whereIn('roles.id', $userRoles);
+                    })
+                    ->whereNull('deleted_at') // Exclude soft-deleted announcements
+                    ->with('roles:id,name')
+                    ->latest()
+                    ->get();
+
+                // If no announcements found, return empty array with debug info
+                if ($announcements->isEmpty()) {
+                    // Check if there are any announcements at all using model
+                    $totalAnnouncements = Announcement::whereNull('deleted_at')->count();
+                    $publishedAnnouncements = Announcement::published()
+                        ->whereNull('deleted_at')
+                        ->count();
+
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'No announcements found for your role(s).',
+                        'data' => [],
+                        'debug' => [
+                            'user_roles' => $userRoleNames,
+                            'total_announcements_in_system' => $totalAnnouncements,
+                            'published_announcements_in_system' => $publishedAnnouncements,
+                            'issue' => 'No announcements are linked to your role(s) in the announcement_role table'
+                        ]
+                    ], 200);
+                }
+            } catch (\Exception $e) {
+                errorLog("Error querying announcements for user {$user->id}: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+                throw $e; // Re-throw to be caught by outer catch
+            }
+
+            // Transform the data for frontend
+            $transformedAnnouncements = $announcements->map(function ($announcement) {
+                return [
+                    'id' => $announcement->id,
+                    'title' => $announcement->title,
+                    'message' => $announcement->message,
+                    'status' => $announcement->status,
+                    'target_audience' => $announcement->roles->map(function ($role) {
+                        return [
+                            'id' => $role->id,
+                            'name' => $role->name,
+                        ];
+                    }),
+                    'created_at' => $announcement->created_at->format('Y-m-d H:i:s'),
+                    'created_at_human' => $announcement->created_at->diffForHumans(),
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Announcements fetched successfully.',
+                'data' => $transformedAnnouncements,
+            ], 200);
+        } catch (\Exception $e) {
+            return errorLog("Failed to fetch announcements: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
 }
