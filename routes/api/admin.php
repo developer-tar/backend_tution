@@ -136,8 +136,13 @@ Route::resource('announcements', AnnouncementController::class);
 
 //start awards and certificates management routing
 Route::resource('awards', AwardController::class);
-Route::resource('certificates', CertificateController::class);
+// Specific certificate routes must be defined BEFORE resource route to avoid route conflicts
+Route::get('certificates/academic-years', [CertificateController::class, 'getAcademicYears']); // Get academic years
+Route::get('certificates/courses-by-year', [CertificateController::class, 'getCoursesByYear']); // Get courses by academic year
+Route::get('certificates/modes', [CertificateController::class, 'getModes']); // Get modes (online/physical)
+Route::get('certificates/students/list', [CertificateController::class, 'getStudents']); // Get students for certificate generation
+Route::get('certificates/students/filtered', [CertificateController::class, 'getFilteredStudents']); // Get filtered students
 Route::get('certificates/{id}/download', [CertificateController::class, 'download']); // Download certificate PDF
 Route::patch('certificates/{id}/revoke', [CertificateController::class, 'revoke']); // Revoke certificate
-Route::get('certificates/students/list', [CertificateController::class, 'getStudents']); // Get students for certificate generation
+Route::resource('certificates', CertificateController::class);
 //end awards and certificates management routing

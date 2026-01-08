@@ -8,7 +8,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class AcdemicYear extends Model
 {
     use SoftDeletes;
-    
+
+    protected $table = 'acdemic_years';
+
     protected $fillable = [
         "start_year",
         "end_year",
@@ -25,8 +27,8 @@ class AcdemicYear extends Model
     {
         return $this->belongsToMany(AcdemicCourse::class, 'academic_year_id');
     }
-    public function weeks(){
+    public function weeks()
+    {
         return $this->hasMany(Week::class, 'academic_year_id');
     }
-   
 }

@@ -13,6 +13,10 @@ use App\Models\Certificate;
 use App\Models\Award;
 use App\Models\User;
 use App\Models\Role;
+use App\Models\Mode;
+use App\Models\AcdemicYear;
+use App\Models\ManageStudentRecord;
+use App\Models\Course;
 use App\Services\CertificateGenerationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -289,6 +293,162 @@ class CertificateController extends Controller
             return sendResponse($students, 'Students fetched successfully.', 200);
         } catch (\Exception $e) {
             return errorLog("Failed to fetch students: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+        }
+    }
+
+    /**
+     * Get courses by academic year for certificate generation
+     *
+     * @param \Illuminate\Http\Request $request
+     * @return JsonResponse
+     */
+    public function getCoursesByYear(\Illuminate\Http\Request $request): JsonResponse
+    {
+        try {
+            $academicYearId = $request->input('academic_year_id');
+
+            if (!$academicYearId) {
+                return sendError('Academic year ID is required', [], 422);
+            }
+
+            // Get courses that are linked to the academic year through acdemic_course pivot table
+            // Filter by academic year and ensure the pivot record is approved and not deleted
+            $courses = Course::whereHas('acdemicyears', function ($query) use ($academicYearId) {
+                $query->where('acdemic_years.id', $academicYearId);
+            })
+                ->whereHas('acdemiccourse', function ($query) use ($academicYearId) {
+                    $query->where('acdemic_id', $academicYearId)
+                        ->whereNull('deleted_at')
+                        ->where('status', config('constants.statuses.APPROVED'));
+                })
+                ->where('status', config('constants.statuses.APPROVED'))
+                ->select('id', 'name')
+                ->orderBy('name', 'asc')
+                ->get();
+
+            return sendResponse($courses, 'Courses fetched successfully.', 200);
+        } catch (\Exception $e) {
+            return errorLog("Failed to fetch courses: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+        }
+    }
+
+    /**
+     * Get students filtered by academic year, course, and mode
+     *
+     * @param \Illuminate\Http\Request $request
+     * @return JsonResponse
+     */
+    public function getFilteredStudents(\Illuminate\Http\Request $request): JsonResponse
+    {
+        try {
+            $academicYearId = $request->input('academic_year_id');
+            $courseId = $request->input('course_id');
+            $modeId = $request->input('mode_id'); // online or in-person mode
+
+            // Build query for students through manage_student_records
+            $query = ManageStudentRecord::whereNull('deleted_at')
+                ->whereNotNull('buyer_id');
+
+            // Filter by course if provided
+            if ($courseId) {
+                $query->where('course_id', $courseId);
+            }
+
+            // Filter by academic year if provided
+            if ($academicYearId) {
+                $query->whereHas('course', function ($courseQuery) use ($academicYearId) {
+                    $courseQuery->whereHas('acdemicyears', function ($yearQuery) use ($academicYearId) {
+                        $yearQuery->where('acdemic_years.id', $academicYearId);
+                    });
+                });
+            }
+
+            // Filter by mode if provided (mode is related to course)
+            if ($modeId) {
+                $query->whereHas('course', function ($courseQuery) use ($modeId) {
+                    $courseQuery->whereHas('modes', function ($modeQuery) use ($modeId) {
+                        $modeQuery->where('modes.id', $modeId);
+                    });
+                });
+            }
+
+            // Get unique student IDs
+            $studentIds = $query->pluck('buyer_id')->unique()->toArray();
+
+            // If no student IDs found, return empty array
+            if (empty($studentIds)) {
+                return sendResponse([], 'No students found for the selected filters.', 200);
+            }
+
+            // Get students with student role
+            $students = User::whereHas('roles', function ($q) {
+                $q->where('name', config('constants.roles.STUDENT'));
+            })
+                ->whereIn('id', $studentIds)
+                ->whereNull('deleted_at')
+                ->select('id', 'first_name', 'last_name', 'email')
+                ->orderBy('first_name', 'asc')
+                ->orderBy('last_name', 'asc')
+                ->get();
+
+            return sendResponse($students, 'Students fetched successfully.', 200);
+        } catch (\Exception $e) {
+            return errorLog("Failed to fetch filtered students: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+        }
+    }
+
+    /**
+     * Get all academic years for certificate generation
+     * Loads from acdemic_years table
+     *
+     * @return JsonResponse
+     */
+    public function getAcademicYears(): JsonResponse
+    {
+        try {
+            // Query directly from acdemic_years table
+            $academicYears = AcdemicYear::select('id', 'start_year', 'end_year', 'status')
+                ->whereNull('deleted_at')
+                ->orderBy('start_year', 'desc')
+                ->get()
+                ->map(function ($year) {
+                    return [
+                        'id' => $year->id,
+                        'name' => $year->start_end_year,
+                        'start_year' => $year->start_year,
+                        'end_year' => $year->end_year,
+                    ];
+                });
+
+            return sendResponse($academicYears, 'Academic years fetched successfully.', 200);
+        } catch (\Exception $e) {
+            return errorLog("Failed to fetch academic years: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+        }
+    }
+
+    /**
+     * Get modes (online/physical) for certificate generation
+     *
+     * @return JsonResponse
+     */
+    public function getModes(): JsonResponse
+    {
+        try {
+            $modes = Mode::whereIn('name', [config('constants.modes.online'), config('constants.modes.in_person')])
+                ->whereNull('deleted_at')
+                ->select('id', 'name')
+                ->orderBy('name', 'asc')
+                ->get()
+                ->map(function ($mode) {
+                    return [
+                        'id' => $mode->id,
+                        'name' => ucfirst($mode->name),
+                    ];
+                });
+
+            return sendResponse($modes, 'Modes fetched successfully.', 200);
+        } catch (\Exception $e) {
+            return errorLog("Failed to fetch modes: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
 }
