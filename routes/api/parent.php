@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\CoursePurchaseController;
 use App\Http\Controllers\Api\FrontendController;
 use App\Http\Controllers\Api\MockExamPurchaseController;
 use App\Http\Controllers\Api\PaperPurchaseController;
@@ -47,6 +48,12 @@ Route::get('subscriptions', [ParentStudentCourseController::class, 'getSubscript
 // Paper checkout for parents
 Route::post('paper/checkout', [PaperPurchaseController::class, 'parentCheckout']);
 
+// Mock exam checkout for parents
+Route::post('mock-exam/checkout', [MockExamPurchaseController::class, 'parentCheckout']);
+
+// Course checkout for parents
+Route::post('course/checkout', [CoursePurchaseController::class, 'parentCheckout']);
+
 // Paper purchases for parents
 Route::get('paper-purchases', [PaperPurchaseController::class, 'myPurchases']); // Get parent's purchased papers
 
@@ -74,3 +81,8 @@ use App\Http\Controllers\Api\Parent\CertificateController;
 Route::get('certificates', [CertificateController::class, 'index']); // Get certificates for parent's students
 Route::get('certificates/{id}', [CertificateController::class, 'show']);
 Route::get('certificates/{id}/download', [CertificateController::class, 'download']);
+
+// Change password route
+use App\Http\Controllers\Api\AuthController;
+
+Route::post('change-password', [AuthController::class, 'changePassword']);

@@ -20,6 +20,10 @@ Route::get('/testing', function () {
 
 //login & register api for roles(tutor,parent,student)
 Route::post('register', [AuthController::class, 'register']);
+Route::post('register/parent-student', [AuthController::class, 'registerParentAndStudent']);
+
+// Email verification
+Route::get('email/verify', [AuthController::class, 'verifyEmail'])->name('verification.verify');
 
 //login api & register  for admin role
 Route::post('admin/login', [AuthController::class, 'AdminLogin']);
@@ -27,6 +31,7 @@ Route::post('admin/login', [AuthController::class, 'AdminLogin']);
 
 //common data 
 Route::get('common/data', [CommonDataController::class, 'commonApi']);
+Route::get('common/country-phone-code', [CommonDataController::class, 'getCountryPhoneCode']);
 
 
 //cart api

@@ -9,9 +9,11 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Passport\HasApiTokens;
 use Laravel\Cashier\Billable;
-class User extends Authenticatable {
+
+class User extends Authenticatable
+{
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable, HasApiTokens,Billable, SoftDeletes;
+    use HasFactory, Notifiable, HasApiTokens, Billable, SoftDeletes;
 
     /**
      * The attributes that are mass assignable.
@@ -22,6 +24,7 @@ class User extends Authenticatable {
         'first_name',
         'last_name',
         'email',
+        'username',
         'password',
     ];
 
@@ -43,30 +46,69 @@ class User extends Authenticatable {
      *
      * @return array<string, string>
      */
-    protected function casts(): array {
+    protected function casts(): array
+    {
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
     }
-    public function roles() {
+    public function roles()
+    {
         return $this->BelongsToMany(Role::class, 'role_user');
     }
-    public function setEmailAttribute($value) {
+    public function setEmailAttribute($value)
+    {
         $this->attributes['email'] = strtolower($value);
     }
-    public function getFullNameAttribute() {
+    public function getFullNameAttribute()
+    {
         return $this->first_name . ' ' . $this->last_name;
     }
 
-    public function course() {
+    public function course()
+    {
         return $this->belongsToMany(Course::class, 'manage_student_records', 'buyer_id', 'course_id');
     }
-    public function cart() {
+    public function cart()
+    {
         return $this->hasMany(Cart::class, 'user_id', 'id');
     }
 
-    public function students() {
+    public function students()
+    {
         return $this->hasMany(StudentDetail::class, 'parent_id', 'id');
+    }
+
+    /**
+     * Get the email address that should be used for verification.
+     *
+     * @return string
+     */
+    public function getEmailForVerification()
+    {
+        return $this->email;
+    }
+
+    /**
+     * Mark the given user's email as verified.
+     *
+     * @return bool
+     */
+    public function markEmailAsVerified()
+    {
+        return $this->forceFill([
+            'email_verified_at' => $this->freshTimestamp(),
+        ])->save();
+    }
+
+    /**
+     * Determine if the user has verified their email address.
+     *
+     * @return bool
+     */
+    public function hasVerifiedEmail()
+    {
+        return ! is_null($this->email_verified_at);
     }
 }

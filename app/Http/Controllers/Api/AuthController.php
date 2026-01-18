@@ -4,11 +4,17 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\AdminLoginRequest;
+use App\Http\Requests\Api\ChangePasswordRequest;
 use App\Http\Requests\Api\LoginRequest;
 use App\Http\Requests\Api\RegisterRequest;
 use App\Models\Cart;
+use App\Models\Course;
+use App\Models\AcdemicCourse;
+use App\Models\CourseAssignment;
 use App\Models\Role;
 use App\Models\User;
+use App\Notifications\EmailVerificationNotification;
+use App\Notifications\EnrollmentConfirmationNotification;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -16,6 +22,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Response;
+use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
@@ -109,6 +117,166 @@ class AuthController extends Controller
             return errorLog("Failed to register user: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
+
+    /**
+     * Combined registration for parent and student
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function registerParentAndStudent(Request $request)
+    {
+        try {
+            // Validate request
+            $validationRules = [
+                // Parent fields
+                'parent_first_name' => 'required|string',
+                'parent_last_name' => 'required|string',
+                'parent_email' => 'required|email|unique:users,email',
+                // Student fields
+                'student_first_name' => 'required|string',
+                'student_last_name' => 'required|string',
+            ];
+
+            // Add optional password and email validations only if provided
+            if ($request->has('parent_password') && !empty($request->parent_password)) {
+                $validationRules['parent_password'] = 'string|min:8|max:10';
+            }
+            if ($request->has('student_email') && !empty($request->student_email)) {
+                $validationRules['student_email'] = 'email|unique:users,email';
+            }
+            if ($request->has('student_password') && !empty($request->student_password)) {
+                $validationRules['student_password'] = 'string|min:8|max:10';
+            }
+
+            $request->validate($validationRules);
+
+            DB::beginTransaction();
+
+            // Get role IDs
+            $parentRole = Role::where('name', config('constants.roles.PARENT'))->first();
+            $studentRole = Role::where('name', config('constants.roles.STUDENT'))->first();
+
+            if (!$parentRole || !$studentRole) {
+                return sendError('Error', ['error' => 'Parent or Student role not found.'], 404);
+            }
+
+            // Generate parent password if not provided
+            $parentPassword = $request->parent_password;
+            if (empty($parentPassword)) {
+                // Generate a unique random password (10 characters)
+                $parentPassword = Str::random(10);
+            }
+
+            // Create parent user
+            $parentData = [
+                'first_name' => $request->parent_first_name,
+                'last_name' => $request->parent_last_name,
+                'email' => $request->parent_email,
+                'password' => Hash::make($parentPassword),
+            ];
+            $parent = User::create($parentData);
+            $parent->roles()->attach($parentRole->id, ['created_at' => now(), 'updated_at' => now()]);
+
+            // Generate student email if not provided
+            $studentEmail = $request->student_email;
+            if (empty($studentEmail)) {
+                // Generate student email based on parent email
+                $emailParts = explode('@', $request->parent_email);
+                $studentEmail = $emailParts[0] . '+student@' . $emailParts[1];
+
+                // Ensure uniqueness by adding a number if needed
+                $counter = 1;
+                while (User::where('email', $studentEmail)->exists()) {
+                    $studentEmail = $emailParts[0] . '+student' . $counter . '@' . $emailParts[1];
+                    $counter++;
+                }
+            }
+
+            // Generate student password if not provided
+            $studentPassword = $request->student_password;
+            if (empty($studentPassword)) {
+                // Generate a unique random password (10 characters)
+                $studentPassword = Str::random(10);
+            }
+
+            // Generate unique username for student
+            $baseUsername = strtolower($request->student_first_name . $request->student_last_name);
+            $baseUsername = preg_replace('/[^a-z0-9]/', '', $baseUsername); // Remove special characters
+            $studentUsername = $baseUsername;
+            $counter = 1;
+            while (User::where('username', $studentUsername)->exists()) {
+                $studentUsername = $baseUsername . $counter;
+                $counter++;
+            }
+
+            // Create student user
+            $studentData = [
+                'first_name' => $request->student_first_name,
+                'last_name' => $request->student_last_name,
+                'email' => $studentEmail,
+                'username' => $studentUsername,
+                'password' => Hash::make($studentPassword),
+            ];
+            $student = User::create($studentData);
+            $student->roles()->attach($studentRole->id, ['created_at' => now(), 'updated_at' => now()]);
+
+            DB::commit();
+
+            // Send enrollment confirmation email to parent with student credentials
+            try {
+                $courseName = $request->course_name ?? null;
+                $courseDates = $this->getCourseDates($courseName);
+                $parent->notify(new EnrollmentConfirmationNotification(
+                    $studentUsername,
+                    $studentPassword,
+                    $student->full_name,
+                    $courseName,
+                    $courseDates['start_date'] ?? null,
+                    $courseDates['end_date'] ?? null
+                ));
+            } catch (Exception $e) {
+                Log::error("Failed to send enrollment confirmation email to parent: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+            }
+
+            // Send verification emails to both parent and student
+            try {
+                $parent->notify(new EmailVerificationNotification());
+            } catch (Exception $e) {
+                Log::error("Failed to send verification email to parent: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+            }
+
+            try {
+                $student->notify(new EmailVerificationNotification());
+            } catch (Exception $e) {
+                Log::error("Failed to send verification email to student: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+            }
+
+            $success = [
+                'parent' => [
+                    'email' => $parent->email,
+                    'full_name' => $parent->full_name,
+                ],
+                'student' => [
+                    'email' => $student->email,
+                    'full_name' => $student->full_name,
+                ],
+            ];
+
+            return sendResponse($success, 'Parent and Student have been successfully registered. Please login.', 201);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (Exception $e) {
+            DB::rollBack();
+            return errorLog("Failed to register parent and student: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+        }
+    }
+
     public function authenticate(Request $request)
     {
         try {
@@ -158,6 +326,166 @@ class AuthController extends Controller
             return errorLog("Error occurred in login: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
+
+    /**
+     * Verify user email address
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function verifyEmail(Request $request)
+    {
+        try {
+            $request->validate([
+                'id' => 'required|exists:users,id',
+                'hash' => 'required|string',
+                'expires' => 'required|string',
+                'signature' => 'required|string',
+            ]);
+
+            $user = User::findOrFail($request->id);
+
+            // Verify the signature using Laravel's URL signature validation
+            $expectedUrl = url()->temporarySignedRoute(
+                'verification.verify',
+                now()->addHours(24),
+                [
+                    'id' => $user->getKey(),
+                    'hash' => sha1($user->getEmailForVerification()),
+                ]
+            );
+
+            // Reconstruct the request URL for validation
+            $requestUrl = url('/api/email/verify') . '?' . http_build_query([
+                'id' => $request->id,
+                'hash' => $request->hash,
+                'expires' => $request->expires,
+                'signature' => $request->signature,
+            ]);
+
+            // Validate the signed URL
+            if (!URL::hasValidSignature($request)) {
+                return sendError('Invalid verification link', ['error' => 'The verification link is invalid or has expired.'], 400);
+            }
+
+            // Verify hash matches
+            if ($request->hash !== sha1($user->getEmailForVerification())) {
+                return sendError('Invalid verification link', ['error' => 'The verification link is invalid.'], 400);
+            }
+
+            // Check if already verified
+            if ($user->hasVerifiedEmail()) {
+                return sendResponse(['verified' => true], 'Email address has already been verified.', 200);
+            }
+
+            // Mark email as verified
+            $user->markEmailAsVerified();
+
+            return sendResponse(['verified' => true], 'Email address has been successfully verified.', 200);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (Exception $e) {
+            return errorLog("Failed to verify email: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+        }
+    }
+
+    /**
+     * Change password for authenticated user (parent or student)
+     *
+     * @param ChangePasswordRequest $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function changePassword(ChangePasswordRequest $request)
+    {
+        try {
+            $user = auth()->user();
+
+            if (!$user) {
+                return sendError('Unauthorized', ['error' => 'User not authenticated.'], 401);
+            }
+
+            // Update password
+            $user->password = Hash::make($request->new_password);
+            $user->save();
+
+            return sendResponse([], 'Password changed successfully.', 200);
+        } catch (Exception $e) {
+            return errorLog("Failed to change password: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+        }
+    }
+
+    /**
+     * Get course start and end dates from database
+     *
+     * @param string|null $courseName
+     * @return array
+     */
+    private function getCourseDates($courseName = null)
+    {
+        try {
+            if (!$courseName) {
+                return ['start_date' => null, 'end_date' => null];
+            }
+
+            // Find course by name
+            $course = Course::where('name', $courseName)
+                ->orWhere('slug', $courseName)
+                ->first();
+
+            if (!$course) {
+                return ['start_date' => null, 'end_date' => null];
+            }
+
+            // Get all academic courses for this course
+            $academicCourseIds = AcdemicCourse::where('course_id', $course->id)
+                ->pluck('id')
+                ->toArray();
+
+            if (empty($academicCourseIds)) {
+                return ['start_date' => null, 'end_date' => null];
+            }
+
+            // Get all course assignments for these academic courses
+            $assignments = CourseAssignment::whereIn('acdemic_course_id', $academicCourseIds)
+                ->with('weeks:id,start_date,end_date')
+                ->get();
+
+            if ($assignments->isEmpty()) {
+                return ['start_date' => null, 'end_date' => null];
+            }
+
+            // Find earliest start_date and latest end_date from all weeks
+            $startDates = [];
+            $endDates = [];
+
+            foreach ($assignments as $assignment) {
+                if ($assignment->weeks) {
+                    if ($assignment->weeks->start_date) {
+                        $startDates[] = $assignment->weeks->start_date;
+                    }
+                    if ($assignment->weeks->end_date) {
+                        $endDates[] = $assignment->weeks->end_date;
+                    }
+                }
+            }
+
+            $startDate = !empty($startDates) ? min($startDates) : null;
+            $endDate = !empty($endDates) ? max($endDates) : null;
+
+            return [
+                'start_date' => $startDate,
+                'end_date' => $endDate,
+            ];
+        } catch (Exception $e) {
+            Log::error("Failed to get course dates: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+            return ['start_date' => null, 'end_date' => null];
+        }
+    }
+
     private function _mergeGuestCart($oldSessionId)
     {
         $userId = auth()->id();

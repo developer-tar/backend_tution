@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\Admin\Assign\MockExamController;
 use App\Http\Controllers\Api\Admin\Assign\PaperController;
+use App\Http\Controllers\Api\CoursePurchaseController;
 use App\Http\Controllers\Api\PaperPurchaseController;
 use App\Http\Controllers\Api\Parent\StudentController;
 use App\Http\Controllers\Api\FrontendController;
@@ -68,6 +69,9 @@ Route::post('paper/purchase', [PaperPurchaseController::class, 'purchasePaper'])
 Route::get('paper/my-purchases', [PaperPurchaseController::class, 'myPurchases']);
 Route::post('paper/verify-payment', [PaperPurchaseController::class, 'verifyPayment']);
 
+// Course routes
+Route::post('course/purchase', [CoursePurchaseController::class, 'purchaseCourse']);
+
 //test results routes
 Route::get('test-results/by-weeks', [TestResultController::class, 'getTestResultsByWeeks']);
 
@@ -100,3 +104,8 @@ Route::get('certificates/{id}/download', [CertificateController::class, 'downloa
 
 //hierarchical data routes
 Route::get('hierarchical-data', [AssignmentController::class, 'getHierarchicalData']);
+
+// Change password route
+use App\Http\Controllers\Api\AuthController;
+
+Route::post('change-password', [AuthController::class, 'changePassword']);
