@@ -39,9 +39,15 @@ class AppServiceProvider extends ServiceProvider
         date_default_timezone_set('Europe/London');
         Passport::tokensCan([
             'Admin' => 'Administrator role',
+            'admin' => 'Administrator role (lowercase)',
             'Student' => 'Student role',
+            'student' => 'Student role (lowercase)',
             'Tutor' => 'Tutor role',
+            'tutor' => 'Tutor role (lowercase)',
             'Parent' => 'Parent role',
+            'parent' => 'Parent role (lowercase)',
+            'School' => 'School role',
+            'school' => 'School role (lowercase)',
         ]);
         Passport::ignoreRoutes();
     }

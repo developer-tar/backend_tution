@@ -89,6 +89,49 @@ class StudentController extends Controller
         }
     }
 
+    /**
+     * Lightweight list for dropdowns (e.g. paper assign): student_details where parent_id = logged parent,
+     * with child user id and name from users table (child_id relation).
+     */
+    public function namesForDropdown(Request $request)
+    {
+        try {
+            $parentId = auth()->user()->id;
+
+            $list = StudentDetail::where('parent_id', $parentId)
+                ->with('student:id,first_name,last_name,email')
+                ->orderBy('created_at', 'desc')
+                ->get()
+                ->map(function ($detail) {
+                    $user = $detail->student;
+                    $fullName = $user
+                        ? trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? '')) ?: $user->email
+                        : ($detail->display_name ?? 'Student');
+                    return [
+                        'id' => $detail->child_id,
+                        'full_name' => $fullName ?: 'Student',
+                        'email' => $user->email ?? null,
+                    ];
+                })
+                ->filter(fn ($row) => !empty($row['id']))
+                ->values()
+                ->toArray();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Students retrieved.',
+                'data' => $list,
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error("Failed to retrieve student names. Message => {$e->getMessage()}, File => {$e->getFile()}, Line => {$e->getLine()}.");
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred while retrieving students.',
+                'error' => 'Internal server error',
+            ], 500);
+        }
+    }
+
     public function store(AddStudentRequest $request)
     {
         try {

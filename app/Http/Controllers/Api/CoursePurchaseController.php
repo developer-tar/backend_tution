@@ -12,6 +12,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Laravel\Cashier\Cashier;
+use Stripe\Stripe;
+use Stripe\Price;
+use Stripe\Product;
 
 class CoursePurchaseController extends Controller
 {
@@ -35,8 +38,91 @@ class CoursePurchaseController extends Controller
                 ->where('stripe_price_id', $request->price_id)
                 ->first();
 
+            // If price not found, check if price_id is invalid (not a Stripe price ID format)
+            // and try to find/create the correct Stripe price
             if (!$coursePrice) {
-                return sendError('Invalid price for this course', [], 400);
+                // Check if the provided price_id is invalid (numeric or doesn't start with 'price_')
+                $isInvalidPriceId = is_numeric($request->price_id) ||
+                    (is_string($request->price_id) && strpos($request->price_id, 'price_') !== 0);
+
+                if ($isInvalidPriceId) {
+                    // Try to find course price by ID if price_id is numeric (database ID)
+                    if (is_numeric($request->price_id)) {
+                        $coursePrice = CoursePrice::where('course_id', $course->id)
+                            ->where('id', $request->price_id)
+                            ->with(['billingPeriod', 'mode'])
+                            ->first();
+                    }
+
+                    // If still not found, try to find any price for this course
+                    if (!$coursePrice) {
+                        $coursePrice = CoursePrice::where('course_id', $course->id)
+                            ->with(['billingPeriod', 'mode'])
+                            ->first();
+                    }
+
+                    // If we found a course price but it has invalid or missing Stripe price ID, create one
+                    if ($coursePrice && (!$coursePrice->stripe_price_id ||
+                        !is_string($coursePrice->stripe_price_id) ||
+                        strpos($coursePrice->stripe_price_id, 'price_') !== 0)) {
+                        // Create Stripe price on the fly
+                        try {
+                            $stripeSecret = config('constants.stripe_secret');
+                            if (!$stripeSecret) {
+                                Log::error("Stripe API key not configured for course price creation");
+                                return sendError('Payment system is not configured. Please contact support.', [], 500);
+                            }
+
+                            Stripe::setApiKey($stripeSecret);
+
+                            // Get or create Stripe product
+                            if (!$coursePrice->stripe_product_id) {
+                                $stripeProduct = Product::create([
+                                    'name' => $course->name,
+                                    'description' => $course->description ?? '',
+                                ]);
+                                $coursePrice->update(['stripe_product_id' => $stripeProduct->id]);
+                            }
+
+                            // Create Stripe price (recurring subscription for courses)
+                            $stripePriceData = [
+                                'currency' => strtolower($coursePrice->currency ?? 'gbp'),
+                                'unit_amount' => intval($coursePrice->amount * 100),
+                                'product' => $coursePrice->stripe_product_id,
+                            ];
+
+                            // Add recurring if billing period exists
+                            if ($coursePrice->billingPeriod) {
+                                $stripePriceData['recurring'] = [
+                                    'interval' => 'month',
+                                    'interval_count' => $coursePrice->billingPeriod->period ?? 1,
+                                ];
+                            }
+
+                            $stripePrice = Price::create($stripePriceData);
+                            $coursePrice->update(['stripe_price_id' => $stripePrice->id]);
+
+                            Log::info("Created Stripe price for course on-the-fly", [
+                                'course_id' => $course->id,
+                                'course_price_id' => $coursePrice->id,
+                                'stripe_price_id' => $stripePrice->id
+                            ]);
+
+                            // Update the price_id to use the newly created Stripe price ID
+                            $request->merge(['price_id' => $stripePrice->id]);
+                        } catch (\Exception $e) {
+                            Log::error("Failed to create Stripe price for course: {$e->getMessage()}", [
+                                'course_id' => $course->id,
+                                'course_price_id' => $coursePrice->id ?? null
+                            ]);
+                            return sendError('Failed to process payment configuration. Please contact support.', [], 500);
+                        }
+                    } else {
+                        return sendError('Invalid price for this course', [], 400);
+                    }
+                } else {
+                    return sendError('Invalid price for this course', [], 400);
+                }
             }
 
             // Check if already purchased for this student/parent
@@ -61,6 +147,7 @@ class CoursePurchaseController extends Controller
             $checkout = $user->checkout($request->price_id, [
                 'success_url' => $frontendUrl . '/parent/course/payment-success?session_id={CHECKOUT_SESSION_ID}',
                 'cancel_url' => $frontendUrl . '/parent/course/payment-cancel',
+                'payment_method_types' => ['card'],
                 'metadata' => [
                     'course_id' => $course->id,
                     'price_id' => $request->price_id,
@@ -102,8 +189,91 @@ class CoursePurchaseController extends Controller
                 ->where('stripe_price_id', $request->price_id)
                 ->first();
 
+            // If price not found, check if price_id is invalid (not a Stripe price ID format)
+            // and try to find/create the correct Stripe price
             if (!$coursePrice) {
-                return sendError('Invalid price for this course', [], 400);
+                // Check if the provided price_id is invalid (numeric or doesn't start with 'price_')
+                $isInvalidPriceId = is_numeric($request->price_id) ||
+                    (is_string($request->price_id) && strpos($request->price_id, 'price_') !== 0);
+
+                if ($isInvalidPriceId) {
+                    // Try to find course price by ID if price_id is numeric (database ID)
+                    if (is_numeric($request->price_id)) {
+                        $coursePrice = CoursePrice::where('course_id', $course->id)
+                            ->where('id', $request->price_id)
+                            ->with(['billingPeriod', 'mode'])
+                            ->first();
+                    }
+
+                    // If still not found, try to find any price for this course
+                    if (!$coursePrice) {
+                        $coursePrice = CoursePrice::where('course_id', $course->id)
+                            ->with(['billingPeriod', 'mode'])
+                            ->first();
+                    }
+
+                    // If we found a course price but it has invalid or missing Stripe price ID, create one
+                    if ($coursePrice && (!$coursePrice->stripe_price_id ||
+                        !is_string($coursePrice->stripe_price_id) ||
+                        strpos($coursePrice->stripe_price_id, 'price_') !== 0)) {
+                        // Create Stripe price on the fly
+                        try {
+                            $stripeSecret = config('constants.stripe_secret');
+                            if (!$stripeSecret) {
+                                Log::error("Stripe API key not configured for course price creation");
+                                return sendError('Payment system is not configured. Please contact support.', [], 500);
+                            }
+
+                            Stripe::setApiKey($stripeSecret);
+
+                            // Get or create Stripe product
+                            if (!$coursePrice->stripe_product_id) {
+                                $stripeProduct = Product::create([
+                                    'name' => $course->name,
+                                    'description' => $course->description ?? '',
+                                ]);
+                                $coursePrice->update(['stripe_product_id' => $stripeProduct->id]);
+                            }
+
+                            // Create Stripe price (recurring subscription for courses)
+                            $stripePriceData = [
+                                'currency' => strtolower($coursePrice->currency ?? 'gbp'),
+                                'unit_amount' => intval($coursePrice->amount * 100),
+                                'product' => $coursePrice->stripe_product_id,
+                            ];
+
+                            // Add recurring if billing period exists
+                            if ($coursePrice->billingPeriod) {
+                                $stripePriceData['recurring'] = [
+                                    'interval' => 'month',
+                                    'interval_count' => $coursePrice->billingPeriod->period ?? 1,
+                                ];
+                            }
+
+                            $stripePrice = Price::create($stripePriceData);
+                            $coursePrice->update(['stripe_price_id' => $stripePrice->id]);
+
+                            Log::info("Created Stripe price for course on-the-fly (student purchase)", [
+                                'course_id' => $course->id,
+                                'course_price_id' => $coursePrice->id,
+                                'stripe_price_id' => $stripePrice->id
+                            ]);
+
+                            // Update the price_id to use the newly created Stripe price ID
+                            $request->merge(['price_id' => $stripePrice->id]);
+                        } catch (\Exception $e) {
+                            Log::error("Failed to create Stripe price for course: {$e->getMessage()}", [
+                                'course_id' => $course->id,
+                                'course_price_id' => $coursePrice->id ?? null
+                            ]);
+                            return sendError('Failed to process payment configuration. Please contact support.', [], 500);
+                        }
+                    } else {
+                        return sendError('Invalid price for this course', [], 400);
+                    }
+                } else {
+                    return sendError('Invalid price for this course', [], 400);
+                }
             }
 
             // Check if already purchased
@@ -127,6 +297,7 @@ class CoursePurchaseController extends Controller
             $checkout = $user->checkout($request->price_id, [
                 'success_url' => $frontendUrl . '/course/payment-success?session_id={CHECKOUT_SESSION_ID}',
                 'cancel_url' => $frontendUrl . '/course/payment-cancel',
+                'payment_method_types' => ['card'],
                 'metadata' => [
                     'course_id' => $course->id,
                     'price_id' => $request->price_id,

@@ -129,10 +129,20 @@ class FrontendController extends Controller
                         return $pricesByMode->mapWithKeys(function ($price) {
                             $key = $price->billingPeriod->name;
 
+                            // Only include price_id if it's a valid Stripe price ID (starts with 'price_')
+                            $priceId = null;
+                            if (
+                                $price->stripe_price_id &&
+                                is_string($price->stripe_price_id) &&
+                                strpos($price->stripe_price_id, 'price_') === 0
+                            ) {
+                                $priceId = $price->stripe_price_id;
+                            }
+
                             return [
                                 $key => [
                                     'price' => $price->currency . '' . (float) $price->amount,
-                                    'price_id' => $price->stripe_price_id,
+                                    'price_id' => $priceId,
                                 ],
                             ];
                         });
@@ -181,25 +191,39 @@ class FrontendController extends Controller
     }
 
     /**
-     * Get all mock exams for public view
+     * Get all mock exams for public view (includes extracted papers)
      */
     public function mockExamView(Request $request)
     {
         try {
             $categoryId = $request->input('category_id');
             $formatId = $request->input('format_id');
+            $page = $request->input('page', 1);
+            $perPage = 12;
 
-            $mockExams = MockExam::with([
+            // Fetch mock exams
+            $mockExamsQuery = MockExam::with([
                 'category:id,name',
                 'format:id,name',
                 'school:id,name',
             ])
                 ->where('status', config('constants.statuses.APPROVED'))
                 ->when($categoryId, fn($q) => $q->where('category_id', $categoryId))
-                ->when($formatId, fn($q) => $q->where('format_id', $formatId))
-                ->latest()
-                ->paginate(12)
-                ->through(function ($exam) {
+                ->when($formatId, fn($q) => $q->where('format_id', $formatId));
+
+            // Get total count
+            $totalCount = $mockExamsQuery->count();
+
+            // Calculate pagination
+            $totalPages = ceil($totalCount / $perPage);
+            $offset = ($page - 1) * $perPage;
+
+            // Fetch mock exams with pagination
+            $mockExams = $mockExamsQuery->orderBy('created_at', 'desc')
+                ->skip($offset)
+                ->take($perPage)
+                ->get()
+                ->map(function ($exam) {
                     return [
                         'id' => $exam->id,
                         'name' => $exam->name,
@@ -215,7 +239,27 @@ class FrontendController extends Controller
                         'slug' => $exam->slug,
                     ];
                 });
-            return sendResponse($mockExams, 'Mock exams fetched successfully.');
+
+            // Apply pagination
+            $paginated = $mockExams->values();
+
+            // Build pagination response
+            $response = [
+                'current_page' => (int) $page,
+                'data' => $paginated,
+                'first_page_url' => $request->url() . '?page=1',
+                'from' => $offset + 1,
+                'last_page' => $totalPages,
+                'last_page_url' => $request->url() . '?page=' . $totalPages,
+                'next_page_url' => $page < $totalPages ? $request->url() . '?page=' . ($page + 1) : null,
+                'path' => $request->url(),
+                'per_page' => $perPage,
+                'prev_page_url' => $page > 1 ? $request->url() . '?page=' . ($page - 1) : null,
+                'to' => min($offset + $perPage, $totalCount),
+                'total' => $totalCount,
+            ];
+
+            return sendResponse($response, 'Mock exams and extracted papers fetched successfully.');
         } catch (Exception $e) {
             return errorLog("Failed to fetch mock exams: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
@@ -227,6 +271,7 @@ class FrontendController extends Controller
     public function mockExamDetails($slug)
     {
         try {
+            // First try to find as mock exam
             $mockExam = MockExam::with([
                 'category:id,name',
                 'format:id,name',
@@ -237,27 +282,28 @@ class FrontendController extends Controller
                 ->where('slug', $slug)
                 ->first();
 
-            if (!$mockExam) {
-                return sendError('Mock exam not found', [], 404);
+            if ($mockExam) {
+                $data = [
+                    'id' => $mockExam->id,
+                    'name' => $mockExam->name,
+                    'description' => $mockExam->description,
+                    'category' => $mockExam->category?->name,
+                    'format' => $mockExam->format?->name,
+                    'price' => $mockExam->price,
+                    'currency' => $mockExam->currency,
+                    'formatted_price' => $mockExam->currency . $mockExam->price,
+                    'duration_minutes' => $mockExam->duration_minutes,
+                    'total_marks' => $mockExam->total_marks,
+                    'questions_count' => $mockExam->questions->count(),
+                    'school' => $mockExam->school?->name,
+                    'image' => $mockExam->getFirstMediaUrl('mock_exam_image') ?: config('constants.dummy_image'),
+                    'stripe_price_id' => $mockExam->stripe_price_id,
+                    'type' => 'mock_exam',
+                ];
+                return sendResponse($data, 'Mock exam details fetched successfully.');
             }
 
-            $data = [
-                'id' => $mockExam->id,
-                'name' => $mockExam->name,
-                'description' => $mockExam->description,
-                'category' => $mockExam->category?->name,
-                'format' => $mockExam->format?->name,
-                'price' => $mockExam->price,
-                'currency' => $mockExam->currency,
-                'formatted_price' => $mockExam->currency . $mockExam->price,
-                'duration_minutes' => $mockExam->duration_minutes,
-                'total_marks' => $mockExam->total_marks,
-                'questions_count' => $mockExam->questions->count(),
-                'school' => $mockExam->school?->name,
-                'image' => $mockExam->getFirstMediaUrl('mock_exam_image') ?: config('constants.dummy_image'),
-                'stripe_price_id' => $mockExam->stripe_price_id,
-            ];
-            return sendResponse($data, 'Mock exam details fetched successfully.');
+            return sendError('Mock exam not found', [], 404);
         } catch (Exception $e) {
             return errorLog("Failed to fetch mock exam details: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
@@ -290,6 +336,7 @@ class FrontendController extends Controller
                 'format:id,name',
                 'school:id,name',
             ])
+                ->whereNull('deleted_at')
                 ->where('status', config('constants.statuses.APPROVED'))
                 ->when($categoryId, fn($q) => $q->where('category_id', $categoryId))
                 ->when($formatId, fn($q) => $q->where('format_id', $formatId))
@@ -333,6 +380,7 @@ class FrontendController extends Controller
                 'school:id,name',
                 'questions:id,paper_id',
             ])
+                ->whereNull('deleted_at')
                 ->where('status', config('constants.statuses.APPROVED'))
                 ->where('slug', $slug)
                 ->first();

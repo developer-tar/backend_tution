@@ -24,6 +24,7 @@ Route::post('register/parent-student', [AuthController::class, 'registerParentAn
 
 // Email verification
 Route::get('email/verify', [AuthController::class, 'verifyEmail'])->name('verification.verify');
+Route::post('email/resend-verification', [AuthController::class, 'resendVerificationEmail']);
 
 //login api & register  for admin role
 Route::post('admin/login', [AuthController::class, 'AdminLogin']);

@@ -8,6 +8,9 @@ use App\Models\MockExamPurchase;
 use App\Models\Paper;
 use App\Models\PaperPurchase;
 use App\Models\User;
+use App\Models\CourseRegistrationPayment;
+use App\Models\CourseInstallmentPayment;
+use App\Services\BasketOrderFulfillmentService;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -35,7 +38,7 @@ class StripeController extends WebhookController
         try {
             \Log::info('hello');
             $session = $payload['data']['object'];
-            
+
             Log::info('Webhook received: checkout.session.completed', [
                 'session_id' => $session['id'],
                 'payment_status' => $session['payment_status'],
@@ -55,27 +58,38 @@ class StripeController extends WebhookController
             if ($session['mode'] === 'payment') {
                 // Check metadata type to route to appropriate handler
                 $type = $session['metadata']['type'] ?? null;
-                
+
                 try {
                     if ($type === 'paper_purchase') {
                         $result = $this->handlePaperPurchase($session);
-                    } else {
+                    } elseif ($type === 'course_registration_fee') {
+                        $result = $this->handleCourseRegistrationFee($session);
+                    } elseif ($type === 'course_installment_payment') {
+                        $result = $this->handleCourseInstallmentPayment($session);
+                    } elseif ($type === 'mock_exam_purchase' && !empty($session['metadata']['mock_exam_id'])) {
                         $result = $this->handleMockExamPurchase($session);
+                    } else {
+                        // Basket checkout (papers and/or mock exams) – no type or type not set per item
+                        // Service creates paper_purchases, mock_exam_purchases and clears cart
+                        $service = app(BasketOrderFulfillmentService::class);
+                        $service->fulfill($session);
+                        $result = $this->successMethod();
                     }
-                    
-                    // Clear cart items after successful purchase
-                    try {
-                        $this->clearCartAfterPurchase($session);
-                    } catch (Exception $cartException) {
-                        // Log cart clearing error but don't fail the webhook
-                        Log::error('Cart clearing failed after purchase', [
-                            'error' => $cartException->getMessage(),
-                            'file' => $cartException->getFile(),
-                            'line' => $cartException->getLine(),
-                            'session_id' => $session['id'] ?? null
-                        ]);
+
+                    // Clear cart for single-item types (basket is cleared by BasketOrderFulfillmentService)
+                    if ($type !== null && $type !== '') {
+                        try {
+                            $this->clearCartAfterPurchase($session);
+                        } catch (Exception $cartException) {
+                            Log::error('Cart clearing failed after purchase', [
+                                'error' => $cartException->getMessage(),
+                                'file' => $cartException->getFile(),
+                                'line' => $cartException->getLine(),
+                                'session_id' => $session['id'] ?? null
+                            ]);
+                        }
                     }
-                    
+
                     return $result;
                 } catch (Exception $e) {
                     Log::error('Payment processing failed', [
@@ -100,7 +114,6 @@ class StripeController extends WebhookController
 
             Log::warning('Unknown session mode', ['mode' => $session['mode']]);
             return $this->successMethod();
-
         } catch (Exception $e) {
             Log::error('Webhook error in handleCheckoutSessionCompleted: ' . $e->getMessage(), [
                 'file' => $e->getFile(),
@@ -130,7 +143,6 @@ class StripeController extends WebhookController
             ]);
 
             return $this->handleFailedPayment($session);
-
         } catch (Exception $e) {
             Log::error('Webhook error in handleCheckoutSessionExpired: ' . $e->getMessage(), [
                 'file' => $e->getFile(),
@@ -205,7 +217,6 @@ class StripeController extends WebhookController
 
             // Cart clearing is handled in handleCheckoutSessionCompleted after purchase creation
             return $this->successMethod();
-
         } catch (Exception $e) {
             Log::error('Mock exam purchase error: ' . $e->getMessage(), [
                 'file' => $e->getFile(),
@@ -272,7 +283,7 @@ class StripeController extends WebhookController
             }
 
             $paymentStatus = $session['payment_status'] ?? 'unpaid';
-            
+
             // Handle student_id: convert empty string to null (for foreign key constraint)
             $studentId = $session['metadata']['student_id'] ?? null;
             $studentId = ($studentId === '' || $studentId === null) ? null : (int)$studentId;
@@ -281,7 +292,7 @@ class StripeController extends WebhookController
             $notStartedStatus = config('constants.mock_exam_purchase_status.NOT_STARTED');
             $paidStatus = config('constants.stripe_payment_status.PAID');
             $failedStatus = config('constants.stripe_payment_status.FAILED');
-            
+
             if (!$notStartedStatus || !$paidStatus || !$failedStatus) {
                 Log::error('Missing constants for paper purchase', [
                     'not_started' => $notStartedStatus,
@@ -317,9 +328,9 @@ class StripeController extends WebhookController
                     'payment_status' => $paymentStatus === 'paid' ? $paidStatus : $failedStatus,
                     'purchased_by' => $session['metadata']['purchased_by'] ?? 'student',
                 ];
-                
+
                 Log::info('Paper purchase data prepared', $purchaseData);
-                
+
                 $purchase = PaperPurchase::create($purchaseData);
             } catch (\Illuminate\Database\QueryException $dbException) {
                 Log::error('Database error creating paper purchase', [
@@ -350,7 +361,6 @@ class StripeController extends WebhookController
 
             // Cart clearing is handled in handleCheckoutSessionCompleted after purchase creation
             return $this->successMethod();
-
         } catch (Exception $e) {
             Log::error('Paper purchase error: ' . $e->getMessage(), [
                 'file' => $e->getFile(),
@@ -362,6 +372,162 @@ class StripeController extends WebhookController
     }
 
     /**
+     * Handle basket one-time payment (papers and/or mock exams from Place Order).
+     * Creates PaperPurchase and/or MockExamPurchase per line item, then cart is cleared by caller.
+     */
+    protected function handleBasketOneTimePayment(array $session)
+    {
+        try {
+            $userId = $session['metadata']['user_id'] ?? null;
+            if (!$userId) {
+                Log::error('Basket webhook: Missing user_id in metadata', [
+                    'session_id' => $session['id'] ?? null,
+                    'metadata' => $session['metadata'] ?? []
+                ]);
+                return $this->successMethod();
+            }
+
+            $user = User::find($userId);
+            if (!$user) {
+                Log::error('Basket webhook: User not found', ['user_id' => $userId]);
+                return $this->successMethod();
+            }
+
+            $lineItems = $this->getLineItemsFromSession($session);
+            if (empty($lineItems)) {
+                Log::warning('Basket webhook: No line items in session', ['session_id' => $session['id'] ?? null]);
+                return $this->successMethod();
+            }
+
+            $paidStatus = config('constants.stripe_payment_status.PAID');
+            $notStartedStatus = config('constants.mock_exam_purchase_status.NOT_STARTED');
+            $purchasedBy = $session['metadata']['purchased_by'] ?? config('constants.roles.PARENT');
+            $currency = $session['currency'] ?? 'gbp';
+
+            foreach ($lineItems as $item) {
+                $priceId = $item['price']['id'] ?? $item['price_id'] ?? null;
+                $quantity = (int) ($item['quantity'] ?? 1);
+                $amountSubtotal = isset($item['amount_subtotal']) ? ($item['amount_subtotal'] / 100) : (($session['amount_total'] ?? 0) / 100 / max(1, count($lineItems)));
+
+                if (!$priceId) {
+                    continue;
+                }
+
+                $paper = Paper::where('stripe_price_id', $priceId)->first();
+                if ($paper) {
+                    $existingCount = PaperPurchase::where('user_id', $userId)
+                        ->where('paper_id', $paper->id)
+                        ->where('stripe_session_id', $session['id'])
+                        ->count();
+                    $toCreate = max(0, $quantity - $existingCount);
+                    $amountEach = $quantity > 0 ? ($amountSubtotal / $quantity) : 0;
+                    for ($q = 0; $q < $toCreate; $q++) {
+                        PaperPurchase::create([
+                            'user_id' => (int) $userId,
+                            'paper_id' => $paper->id,
+                            'student_id' => null,
+                            'stripe_session_id' => $session['id'],
+                            'transaction_id' => $session['payment_intent'] ?? null,
+                            'amount' => $amountEach,
+                            'currency' => $currency,
+                            'purchased_at' => now(),
+                            'total_marks' => $paper->total_marks,
+                            'status' => $notStartedStatus,
+                            'payment_status' => $paidStatus,
+                            'purchased_by' => $purchasedBy,
+                        ]);
+                    }
+                    Log::info('Basket webhook: Paper purchase(s) created', [
+                        'paper_id' => $paper->id,
+                        'user_id' => $userId,
+                        'quantity' => $quantity,
+                        'session_id' => $session['id'] ?? null
+                    ]);
+                    continue;
+                }
+
+                $mockExam = MockExam::where('stripe_price_id', $priceId)->first();
+                if ($mockExam) {
+                    $existingCount = MockExamPurchase::where('user_id', $userId)
+                        ->where('mock_exam_id', $mockExam->id)
+                        ->where('stripe_session_id', $session['id'])
+                        ->count();
+                    $toCreate = max(0, $quantity - $existingCount);
+                    $amountEach = $quantity > 0 ? ($amountSubtotal / $quantity) : 0;
+                    for ($q = 0; $q < $toCreate; $q++) {
+                        MockExamPurchase::create([
+                            'user_id' => (int) $userId,
+                            'mock_exam_id' => $mockExam->id,
+                            'student_id' => null,
+                            'stripe_session_id' => $session['id'],
+                            'transaction_id' => $session['payment_intent'] ?? null,
+                            'amount' => $amountEach,
+                            'currency' => $currency,
+                            'purchased_at' => now(),
+                            'total_marks' => $mockExam->total_marks ?? 0,
+                            'status' => $notStartedStatus,
+                            'payment_status' => $paidStatus,
+                            'purchased_by' => $purchasedBy,
+                        ]);
+                    }
+                    Log::info('Basket webhook: Mock exam purchase(s) created', [
+                        'mock_exam_id' => $mockExam->id,
+                        'user_id' => $userId,
+                        'quantity' => $quantity,
+                        'session_id' => $session['id'] ?? null
+                    ]);
+                }
+            }
+
+            return $this->successMethod();
+        } catch (Exception $e) {
+            Log::error('Basket one-time payment error: ' . $e->getMessage(), [
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+                'session_id' => $session['id'] ?? null
+            ]);
+            return $this->successMethod();
+        }
+    }
+
+    /**
+     * Get line items from session (expand from Stripe API if not present).
+     */
+    protected function getLineItemsFromSession(array $session): array
+    {
+        if (isset($session['line_items']['data']) && is_array($session['line_items']['data'])) {
+            return $session['line_items']['data'];
+        }
+        if (isset($session['line_items']) && is_array($session['line_items'])) {
+            return $session['line_items'];
+        }
+        try {
+            Stripe::setApiKey(config('constants.stripe_secret'));
+            $stripeSession = StripeSession::retrieve($session['id'], [
+                'expand' => ['line_items.data.price']
+            ]);
+            if (isset($stripeSession->line_items->data)) {
+                return array_map(function ($item) {
+                    $priceId = isset($item->price) ? $item->price->id : null;
+                    return [
+                        'price' => ['id' => $priceId],
+                        'price_id' => $priceId,
+                        'quantity' => $item->quantity ?? 1,
+                        'amount_subtotal' => $item->amount_subtotal ?? 0,
+                    ];
+                }, $stripeSession->line_items->data);
+            }
+        } catch (Exception $e) {
+            Log::warning('Failed to retrieve line items from Stripe', [
+                'session_id' => $session['id'] ?? null,
+                'error' => $e->getMessage()
+            ]);
+        }
+        return [];
+    }
+
+    /**
      * Mark failed payments
      */
     protected function handleFailedPayment(array $session)
@@ -369,7 +535,7 @@ class StripeController extends WebhookController
         try {
             $userId = $session['metadata']['user_id'] ?? null;
             $type = $session['metadata']['type'] ?? null;
-            
+
             // Handle mock exam purchase
             if ($type === 'mock_exam_purchase' || !$type) {
                 $mockExamId = $session['metadata']['mock_exam_id'] ?? null;
@@ -390,7 +556,7 @@ class StripeController extends WebhookController
                     }
                 }
             }
-            
+
             // Handle paper purchase
             if ($type === 'paper_purchase') {
                 $paperId = $session['metadata']['paper_id'] ?? null;
@@ -413,7 +579,6 @@ class StripeController extends WebhookController
             }
 
             return $this->successMethod();
-
         } catch (Exception $e) {
             Log::error('Failed payment handler error: ' . $e->getMessage());
             return $this->successMethod();
@@ -435,7 +600,6 @@ class StripeController extends WebhookController
             ]);
 
             return $this->successMethod();
-
         } catch (Exception $e) {
             Log::error('Subscription purchase error: ' . $e->getMessage(), [
                 'file' => $e->getFile(),
@@ -609,7 +773,7 @@ class StripeController extends WebhookController
                     $subscription = DB::table('subscriptions')
                         ->where('stripe_id', $subscriptionId)
                         ->first();
-                    
+
                     if ($subscription) {
                         $userId = $subscription->user_id;
                         Log::info('Retrieved user_id from subscription record', [
@@ -651,7 +815,6 @@ class StripeController extends WebhookController
                 'price_ids' => $priceIds,
                 'deleted_count' => $deletedCount
             ]);
-
         } catch (Exception $e) {
             Log::error('Error clearing cart after purchase', [
                 'session_id' => $session['id'] ?? null,
@@ -688,7 +851,6 @@ class StripeController extends WebhookController
             $query->delete();
 
             return $deletedCount;
-
         } catch (Exception $e) {
             Log::error('Error in clearCartItems', [
                 'user_id' => $userId,
@@ -699,6 +861,127 @@ class StripeController extends WebhookController
                 'line' => $e->getLine()
             ]);
             return 0;
+        }
+    }
+
+    /**
+     * Handle course registration fee payment
+     */
+    protected function handleCourseRegistrationFee(array $session)
+    {
+        try {
+            $registrationPaymentId = $session['metadata']['registration_payment_id'] ?? null;
+            $userId = $session['metadata']['user_id'] ?? null;
+
+            Log::info('Course registration fee webhook: Processing payment', [
+                'session_id' => $session['id'] ?? null,
+                'registration_payment_id' => $registrationPaymentId,
+                'user_id' => $userId,
+                'metadata' => $session['metadata'] ?? []
+            ]);
+
+            if (!$registrationPaymentId || !$userId) {
+                Log::error('Course registration fee webhook: Missing metadata', [
+                    'metadata' => $session['metadata'] ?? [],
+                    'session_id' => $session['id'] ?? null
+                ]);
+                return $this->successMethod();
+            }
+
+            $registrationPayment = CourseRegistrationPayment::find($registrationPaymentId);
+
+            if (!$registrationPayment) {
+                Log::error('Course registration fee webhook: Payment record not found', [
+                    'registration_payment_id' => $registrationPaymentId,
+                    'session_id' => $session['id'] ?? null
+                ]);
+                return $this->successMethod();
+            }
+
+            // Update payment record
+            $registrationPayment->update([
+                'stripe_payment_intent_id' => $session['payment_intent'] ?? null,
+                'transaction_id' => $session['payment_intent'] ?? null,
+                'status' => 'paid',
+                'paid_at' => now(),
+            ]);
+
+            Log::info('Course registration fee payment updated', [
+                'registration_payment_id' => $registrationPayment->id,
+                'course_id' => $registrationPayment->course_id,
+                'user_id' => $registrationPayment->user_id
+            ]);
+
+            return $this->successMethod();
+        } catch (Exception $e) {
+            Log::error('Error handling course registration fee payment', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'session_id' => $session['id'] ?? null
+            ]);
+            return $this->successMethod();
+        }
+    }
+
+    /**
+     * Handle course installment payment
+     */
+    protected function handleCourseInstallmentPayment(array $session)
+    {
+        try {
+            $installmentPaymentId = $session['metadata']['installment_payment_id'] ?? null;
+            $userId = $session['metadata']['user_id'] ?? null;
+
+            Log::info('Course installment payment webhook: Processing payment', [
+                'session_id' => $session['id'] ?? null,
+                'installment_payment_id' => $installmentPaymentId,
+                'user_id' => $userId,
+                'metadata' => $session['metadata'] ?? []
+            ]);
+
+            if (!$installmentPaymentId || !$userId) {
+                Log::error('Course installment payment webhook: Missing metadata', [
+                    'metadata' => $session['metadata'] ?? [],
+                    'session_id' => $session['id'] ?? null
+                ]);
+                return $this->successMethod();
+            }
+
+            $installmentPayment = CourseInstallmentPayment::find($installmentPaymentId);
+
+            if (!$installmentPayment) {
+                Log::error('Course installment payment webhook: Payment record not found', [
+                    'installment_payment_id' => $installmentPaymentId,
+                    'session_id' => $session['id'] ?? null
+                ]);
+                return $this->successMethod();
+            }
+
+            // Update payment record
+            $installmentPayment->update([
+                'stripe_payment_intent_id' => $session['payment_intent'] ?? null,
+                'transaction_id' => $session['payment_intent'] ?? null,
+                'status' => 'paid',
+                'paid_at' => now(),
+            ]);
+
+            Log::info('Course installment payment updated', [
+                'installment_payment_id' => $installmentPayment->id,
+                'course_id' => $installmentPayment->course_id,
+                'installment_number' => $installmentPayment->installment_number,
+                'user_id' => $installmentPayment->user_id
+            ]);
+
+            return $this->successMethod();
+        } catch (Exception $e) {
+            Log::error('Error handling course installment payment', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'session_id' => $session['id'] ?? null
+            ]);
+            return $this->successMethod();
         }
     }
 }

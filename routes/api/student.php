@@ -63,6 +63,7 @@ Route::post('mock-exam/{purchaseId}/submit', [MockExamController::class, 'submit
 
 // Paper routes
 Route::get('my-papers', [PaperController::class, 'myPapers']);
+Route::get('paper/{purchaseId}/questions', [PaperController::class, 'getQuestions']);
 Route::post('paper/{paperId}/start', [PaperController::class, 'startPaper']);
 Route::post('paper/{purchaseId}/submit', [PaperController::class, 'submitPaper']);
 Route::post('paper/purchase', [PaperPurchaseController::class, 'purchasePaper']);
@@ -71,6 +72,13 @@ Route::post('paper/verify-payment', [PaperPurchaseController::class, 'verifyPaym
 
 // Course routes
 Route::post('course/purchase', [CoursePurchaseController::class, 'purchaseCourse']);
+
+// Course registration fee and installment routes
+Route::post('course/registration-fee/pay', [CoursePurchaseController::class, 'payRegistrationFee']);
+Route::get('course/registration-fee/status', [CoursePurchaseController::class, 'checkRegistrationFeeStatus']);
+Route::get('course/installments', [CoursePurchaseController::class, 'getInstallments']);
+Route::post('course/installment/pay', [CoursePurchaseController::class, 'payInstallment']);
+Route::get('course/payment-status', [CoursePurchaseController::class, 'getPaymentStatus']);
 
 //test results routes
 Route::get('test-results/by-weeks', [TestResultController::class, 'getTestResultsByWeeks']);

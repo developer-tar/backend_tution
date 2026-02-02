@@ -129,7 +129,7 @@ return [
 
     'cookie' => env(
         'SESSION_COOKIE',
-        Str::slug(env('APP_NAME', 'laravel'), '_').'_session'
+        Str::slug(env('APP_NAME', 'laravel'), '_') . '_session'
     ),
 
     /*
@@ -169,7 +169,10 @@ return [
     |
     */
 
-    'secure' => env('SESSION_SECURE_COOKIE'),
+    // For cross-site cookies, Secure must be true when SameSite=None
+    // For local HTTP development, set to false or null
+    // For production HTTPS, set to true
+    'secure' => env('SESSION_SECURE_COOKIE', false),
 
     /*
     |--------------------------------------------------------------------------
@@ -190,8 +193,13 @@ return [
     |--------------------------------------------------------------------------
     |
     | This option determines how your cookies behave when cross-site requests
-    | take place, and can be used to mitigate CSRF attacks. By default, we
-    | will set this value to "lax" to permit secure cross-site requests.
+    | take place, and can be used to mitigate CSRF attacks.
+    |
+    | IMPORTANT: For cross-site cookies (different domains/ports):
+    | - Set SESSION_SAME_SITE=none in .env
+    | - Set SESSION_SECURE_COOKIE=true in .env (REQUIRED when SameSite=None)
+    |
+    | For same-site (same domain): Use "lax" (default) or "strict"
     |
     | See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#samesitesamesite-value
     |
@@ -199,7 +207,10 @@ return [
     |
     */
 
-    'same_site' => env('SESSION_SAME_SITE', 'lax'),
+    // For cross-site requests (different domains/ports), use 'none' or null
+    // null = no SameSite attribute (works for local HTTP development)
+    // 'none' = requires Secure=true (for production HTTPS)
+    'same_site' => env('SESSION_SAME_SITE', null),
 
     /*
     |--------------------------------------------------------------------------

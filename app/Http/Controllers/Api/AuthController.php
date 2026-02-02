@@ -28,6 +28,28 @@ use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
+    /** Valid Passport scope names (must match Passport::tokensCan() keys) */
+    private const VALID_SCOPES = ['Admin', 'Student', 'Parent', 'Tutor', 'School'];
+
+    /**
+     * Map role name to a valid Passport scope to avoid "Invalid scope(s) provided".
+     */
+    private function scopeForRole(?string $roleName, string $default = 'Student'): string
+    {
+        if (!$roleName) {
+            return $default;
+        }
+        $normalized = strtolower(trim($roleName));
+        $map = [
+            'admin' => 'Admin',
+            'student' => 'Student',
+            'parent' => 'Parent',
+            'tutor' => 'Tutor',
+            'school' => 'School',
+        ];
+        return $map[$normalized] ?? $default;
+    }
+
     /**
      * User login API method
      *
@@ -49,8 +71,8 @@ class AuthController extends Controller
                     return sendError('Unauthorized', ['error' => 'You are not authorized to access admin panel.'], 403);
                 }
                 if ($user->status == config('constants.statuses.APPROVED')) {
-                    // Create token with role name as scope
-                    $tokenResult = $user->createToken('accessToken', [$role?->name]);
+                    $scopeName = $this->scopeForRole($role?->name, 'Admin');
+                    $tokenResult = $user->createToken('accessToken', [$scopeName]);
 
                     $user = [
                         'id' => $user->id,
@@ -252,6 +274,11 @@ class AuthController extends Controller
                 Log::error("Failed to send verification email to student: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
             }
 
+            // Create access token for parent to proceed with payment immediately
+            $parentRole = $parent->roles()->first();
+            $scopeName = $this->scopeForRole($parentRole?->name, 'Parent');
+            $parentToken = $parent->createToken('accessToken', [$scopeName])->accessToken;
+
             $success = [
                 'parent' => [
                     'email' => $parent->email,
@@ -261,9 +288,11 @@ class AuthController extends Controller
                     'email' => $student->email,
                     'full_name' => $student->full_name,
                 ],
+                'access_token' => $parentToken,
+                'role' => $parentRole?->name,
             ];
 
-            return sendResponse($success, 'Parent and Student have been successfully registered. Please login.', 201);
+            return sendResponse($success, 'Parent and Student have been successfully registered. Verification email has been sent.', 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
             DB::rollBack();
             return response()->json([
@@ -283,6 +312,11 @@ class AuthController extends Controller
             $credentials = $request->only('email', 'password');
             $oldSessionId = session()->getId(); // guest session
 
+            Log::info('Login attempt started', [
+                'old_session_id' => $oldSessionId,
+                'email' => $request->email
+            ]);
+
             if (Auth::attempt($credentials)) {
                 $user = Auth::user();
                 $role = $user->roles()->first();
@@ -297,19 +331,27 @@ class AuthController extends Controller
                 }
                 $status = $user->status;
                 if ($status == config('constants.statuses.APPROVED')) {
+                    // Check if session ID changed during login
+                    $currentSessionId = session()->getId();
+                    if ($currentSessionId !== $oldSessionId) {
+                        Log::warning('Session ID changed during login', [
+                            'old_session_id' => $oldSessionId,
+                            'new_session_id' => $currentSessionId,
+                            'user_id' => $user->id
+                        ]);
+                    }
 
+                    // Merge guest cart items to user cart before creating token
+                    $this->_mergeGuestCart($oldSessionId);
+
+                    $scopeName = $this->scopeForRole($role?->name, 'Student');
                     $user = [
                         'id' => $user->id,
                         'full_name' => $user->full_name,
                         'email' => $user->email,
                         'role' => $role?->name,
-                        'access_token' => $user->createToken('accessToken', [$role?->name])->accessToken,
+                        'access_token' => $user->createToken('accessToken', [$scopeName])->accessToken,
                     ];
-
-                    if ($role->name == config('constants.roles.PARENT')) {
-
-                        $this->_mergeGuestCart($oldSessionId);
-                    }
                     $response = [
                         'success' => true,
                         'data' => $user,
@@ -382,6 +424,45 @@ class AuthController extends Controller
             $user->markEmailAsVerified();
 
             return sendResponse(['verified' => true], 'Email address has been successfully verified.', 200);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return sendError('Validation failed', ['errors' => $e->errors()], 422);
+        } catch (Exception $e) {
+            return errorLog("Failed to verify email: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+        }
+    }
+
+    /**
+     * Resend verification email
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function resendVerificationEmail(Request $request)
+    {
+        try {
+            $request->validate([
+                'email' => 'required|email|exists:users,email',
+            ]);
+
+            $user = User::where('email', $request->email)->first();
+
+            if (!$user) {
+                return sendError('User not found', ['error' => 'No user found with this email address.'], 404);
+            }
+
+            // Check if already verified
+            if ($user->hasVerifiedEmail()) {
+                return sendResponse(['verified' => true], 'Email address has already been verified.', 200);
+            }
+
+            // Send verification email
+            try {
+                $user->notify(new EmailVerificationNotification());
+                return sendResponse(['sent' => true], 'Verification email has been sent successfully.', 200);
+            } catch (Exception $e) {
+                Log::error("Failed to send verification email: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+                return sendError('Failed to send verification email', ['error' => 'Please try again later.'], 500);
+            }
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'success' => false,
@@ -490,28 +571,111 @@ class AuthController extends Controller
     {
         $userId = auth()->id();
 
-        $guestItems = Cart::where('session_id', $oldSessionId)->get();
+        if (!$userId) {
+            Log::warning('Attempted to merge guest cart but user is not authenticated');
+            return;
+        }
+
+        $currentSessionId = session()->getId();
+
+        Log::info('Starting guest cart merge', [
+            'user_id' => $userId,
+            'old_session_id' => $oldSessionId,
+            'current_session_id' => $currentSessionId
+        ]);
+
+        // Get all guest cart items for the old session ID (primary search)
+        $guestItemsByOldSession = Cart::where('session_id', $oldSessionId)
+            ->whereNull('user_id')
+            ->get();
+
+        Log::info('Guest cart query by old session', [
+            'old_session_id' => $oldSessionId,
+            'items_found' => $guestItemsByOldSession->count(),
+            'items' => $guestItemsByOldSession->map(function ($item) {
+                return [
+                    'id' => $item->id,
+                    'product_id' => $item->product_id,
+                    'product_type' => $item->product_type,
+                    'session_id' => $item->session_id,
+                    'user_id' => $item->user_id
+                ];
+            })->toArray()
+        ]);
+
+        // Also check current session ID if it's different (fallback)
+        $guestItemsByCurrentSession = collect();
+        if ($currentSessionId !== $oldSessionId) {
+            $guestItemsByCurrentSession = Cart::where('session_id', $currentSessionId)
+                ->whereNull('user_id')
+                ->get();
+
+            Log::info('Guest cart query by current session', [
+                'current_session_id' => $currentSessionId,
+                'items_found' => $guestItemsByCurrentSession->count()
+            ]);
+        }
+
+        // Merge both collections and remove duplicates by cart item ID
+        $guestItems = $guestItemsByOldSession->merge($guestItemsByCurrentSession)
+            ->unique('id');
+
+        Log::info('Guest cart items found', [
+            'user_id' => $userId,
+            'old_session_items' => $guestItemsByOldSession->count(),
+            'current_session_items' => $guestItemsByCurrentSession->count(),
+            'total_items' => $guestItems->count(),
+            'session_ids' => $guestItems->pluck('session_id')->unique()->toArray()
+        ]);
 
         if ($guestItems->isNotEmpty()) {
-            foreach ($guestItems as $item) {
-                $cartItem = Cart::firstOrCreate(
-                    [
-                        'user_id' => $userId,
-                        'product_id' => $item->product_id,
-                        'price_id' => $item->price_id,
-                    ],
-                    [
-                        'quantity' => 0, // default if new
-                        'product_type' => $item->product_type,
-                    ]
-                );
+            Log::info('Merging guest cart to user cart', [
+                'user_id' => $userId,
+                'old_session_id' => $oldSessionId,
+                'guest_items_count' => $guestItems->count()
+            ]);
 
-                // Increment the quantity safely
-                $cartItem->increment('quantity', $item->quantity);
+            foreach ($guestItems as $item) {
+                // Check if user already has this exact item (same product_id, product_type, and price_id)
+                $existingCartItem = Cart::where('user_id', $userId)
+                    ->where('product_id', $item->product_id)
+                    ->where('product_type', $item->product_type)
+                    ->where('price_id', $item->price_id)
+                    ->first();
+
+                if ($existingCartItem) {
+                    // If item exists, add the quantities together
+                    $existingCartItem->increment('quantity', $item->quantity);
+                    Log::info('Merged guest cart item - updated existing item', [
+                        'cart_item_id' => $existingCartItem->id,
+                        'product_id' => $item->product_id,
+                        'added_quantity' => $item->quantity,
+                        'new_quantity' => $existingCartItem->quantity
+                    ]);
+                } else {
+                    // If item doesn't exist, create it with the guest cart quantity
+                    Cart::create([
+                        'user_id' => $userId,
+                        'session_id' => null, // Clear session_id for user cart items
+                        'product_id' => $item->product_id,
+                        'product_type' => $item->product_type,
+                        'quantity' => $item->quantity,
+                        'price_id' => $item->price_id,
+                    ]);
+                    Log::info('Merged guest cart item - created new item', [
+                        'product_id' => $item->product_id,
+                        'quantity' => $item->quantity
+                    ]);
+                }
 
                 // Remove the guest cart item
                 $item->delete();
             }
+
+            Log::info('Guest cart merge completed', [
+                'user_id' => $userId,
+                'items_merged' => $guestItems->count()
+            ]);
         }
     }
 }

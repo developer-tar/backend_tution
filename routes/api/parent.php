@@ -27,6 +27,7 @@ Route::get('testing', function () {
 */
 // start student routing 
 Route::get('students', [StudentController::class, 'index']);
+Route::get('students/names', [StudentController::class, 'namesForDropdown']); // student_details (parent_id = logged parent) -> child_id names for dropdowns
 Route::get('student-emails', [StudentController::class, 'getStudentEmails']);
 Route::post('student/reset-password', [StudentController::class, 'resetPassword']);
 Route::resource('student', StudentController::class)->only(['edit', 'update', 'destroy']);
@@ -41,6 +42,8 @@ Route::post('assign-course-to-student', [ParentStudentCourseController::class, '
 //merge add to cart and update cart
 
 Route::post('/checkout', [PaymentController::class, 'checkout']);
+Route::post('/verify-payment', [PaymentController::class, 'verifyPayment']);
+Route::post('/checkout/fulfill', [PaymentController::class, 'fulfill']);
 
 // Parent subscriptions
 Route::get('subscriptions', [ParentStudentCourseController::class, 'getSubscriptions']);
@@ -54,8 +57,16 @@ Route::post('mock-exam/checkout', [MockExamPurchaseController::class, 'parentChe
 // Course checkout for parents
 Route::post('course/checkout', [CoursePurchaseController::class, 'parentCheckout']);
 
+// Course registration fee and installment routes
+Route::post('course/registration-fee/pay', [CoursePurchaseController::class, 'payRegistrationFee']);
+Route::get('course/registration-fee/status', [CoursePurchaseController::class, 'checkRegistrationFeeStatus']);
+Route::get('course/installments', [CoursePurchaseController::class, 'getInstallments']);
+Route::post('course/installment/pay', [CoursePurchaseController::class, 'payInstallment']);
+Route::get('course/payment-status', [CoursePurchaseController::class, 'getPaymentStatus']);
+
 // Paper purchases for parents
 Route::get('paper-purchases', [PaperPurchaseController::class, 'myPurchases']); // Get parent's purchased papers
+Route::put('paper-purchases/{purchaseId}/assign-student', [PaperPurchaseController::class, 'assignStudent']);
 
 // Billing Information Routes
 Route::get('billing-information', [BillingInformationController::class, 'index']);

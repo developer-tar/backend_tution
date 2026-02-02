@@ -12,7 +12,9 @@ use App\Http\Controllers\Api\Admin\CertificateController;
 use App\Http\Controllers\Api\Admin\MasterFormController;
 use App\Http\Controllers\Api\Admin\ParentController;
 use App\Http\Controllers\Api\Admin\PaperPurchaseController;
+use App\Http\Controllers\Api\Admin\PaperExtractController;
 use App\Http\Controllers\Api\Admin\StudentController;
+use App\Http\Controllers\Api\Admin\CourseInstallmentController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -29,6 +31,14 @@ use Illuminate\Support\Facades\Route;
 // start course routing 
 Route::resource('assign/course', CourseController::class);
 Route::patch('assign/course/{course}/toggle-status', [CourseController::class, 'toggleStatus']);
+
+// Course installment management routes
+Route::get('assign/course/{course}/installments', [CourseInstallmentController::class, 'index']);
+Route::post('assign/course/{course}/installments', [CourseInstallmentController::class, 'store']);
+Route::get('assign/course/{course}/installments/{installment}', [CourseInstallmentController::class, 'show']);
+Route::put('assign/course/{course}/installments/{installment}', [CourseInstallmentController::class, 'update']);
+Route::patch('assign/course/{course}/installments/{installment}', [CourseInstallmentController::class, 'update']);
+Route::delete('assign/course/{course}/installments/{installment}', [CourseInstallmentController::class, 'destroy']);
 
 //end course routing
 
@@ -74,6 +84,12 @@ Route::delete('paper/category/{id}', [PaperController::class, 'deleteCategory'])
 // Paper CRUD routes
 Route::resource('paper', PaperController::class);
 Route::patch('paper/{paper}/toggle-status', [PaperController::class, 'toggleStatus']);
+
+// Paper Extract routes
+Route::resource('paper-extracts', PaperExtractController::class);
+Route::get('paper-extracts/{id}/questions/search', [PaperExtractController::class, 'searchQuestions']);
+Route::get('paper-extracts/statistics/overview', [PaperExtractController::class, 'statistics']);
+Route::put('paper-extracts/questions/{id}', [PaperExtractController::class, 'updateQuestion']);
 //end mock exam routing
 
 Route::get('ca_records', [AssignmentController::class, 'courseAcdemicRecords']);

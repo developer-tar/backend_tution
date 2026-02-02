@@ -48,6 +48,7 @@ class MockExamPurchaseController extends Controller
             $checkout = $user->checkout($mockExam->stripe_price_id, [
                 'success_url' => $frontendUrl . '/parent/mock-exam/payment-success?session_id={CHECKOUT_SESSION_ID}',
                 'cancel_url' => $frontendUrl . '/parent/mock-exam/payment-cancel',
+                'payment_method_types' => ['card'],
                 'metadata' => [
                     'mock_exam_id' => $mockExam->id,
                     'user_id' => $user->id, // Parent ID
@@ -102,6 +103,7 @@ class MockExamPurchaseController extends Controller
             $checkout = $user->checkout($mockExam->stripe_price_id, [
                 'success_url' => $frontendUrl . '/mock-exam/payment-success?session_id={CHECKOUT_SESSION_ID}',
                 'cancel_url' => $frontendUrl . '/mock-exam/payment-cancel',
+                'payment_method_types' => ['card'],
                 'metadata' => [
                     'mock_exam_id' => $mockExam->id,
                     'user_id' => $user->id, // Student ID

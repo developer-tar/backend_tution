@@ -5,18 +5,18 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class MockExamQuestion extends Model
+class PaperExtractQuestion extends Model
 {
     use SoftDeletes;
 
     protected $fillable = [
-        'mock_exam_id',
+        'paper_extract_id',
         'question_number',
+        'section',
         'question_text',
         'question_text_clean',
         'question_type',
         'marks',
-        'duration_in_sec',
         'page_number',
         'options',
         'correct_answer',
@@ -25,37 +25,35 @@ class MockExamQuestion extends Model
         'subtopic',
         'keywords',
         'metadata',
-        'section',
         'order',
         'status',
     ];
 
     protected $casts = [
-        'mock_exam_id' => 'integer',
-        'question_number' => 'integer',
-        'marks' => 'integer',
-        'duration_in_sec' => 'integer',
-        'page_number' => 'integer',
         'options' => 'array',
         'keywords' => 'array',
         'metadata' => 'array',
+        'question_number' => 'integer',
+        'marks' => 'integer',
+        'page_number' => 'integer',
         'order' => 'integer',
         'status' => 'integer',
     ];
 
-    public function mockExam()
+    /**
+     * Get the paper extract this question belongs to
+     */
+    public function paperExtract()
     {
-        return $this->belongsTo(MockExam::class, 'mock_exam_id');
+        return $this->belongsTo(PaperExtract::class, 'paper_extract_id');
     }
 
-    public function options()
+    /**
+     * Get the media (images/charts) associated with this question
+     */
+    public function media()
     {
-        return $this->hasMany(MockExamOption::class, 'mock_exam_question_id');
-    }
-
-    public function userAnswers()
-    {
-        return $this->hasMany(MockExamUserAnswer::class, 'mock_exam_question_id');
+        return $this->hasMany(PaperExtractQuestionMedia::class, 'paper_extract_question_id');
     }
 
     /**

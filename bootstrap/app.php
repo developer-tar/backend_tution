@@ -4,6 +4,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Laravel\Passport\Http\Middleware\CheckToken;
+use Laravel\Passport\Http\Middleware\CheckTokenForAnyScope;
 use Illuminate\Http\JsonResponse;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Illuminate\Support\Facades\Route;
@@ -20,7 +21,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 Route::middleware(CheckToken::using('Admin'))->prefix('api/admin')->group(base_path('routes/api/admin.php'));
                 Route::middleware(CheckToken::using('Tutor'))->prefix('api/tutor')->group(base_path('routes/api/tutor.php'));
                 Route::middleware(CheckToken::using('Student'))->prefix('api/student')->group(base_path('routes/api/student.php'));
-                Route::middleware(CheckToken::using('Parent'))->prefix('api/parent')->group(base_path('routes/api/parent.php'));
+                Route::middleware(CheckTokenForAnyScope::using('Parent', 'parent'))->prefix('api/parent')->group(base_path('routes/api/parent.php'));
             });
         },
     )

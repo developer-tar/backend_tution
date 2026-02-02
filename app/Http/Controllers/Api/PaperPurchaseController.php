@@ -8,6 +8,7 @@ use App\Models\Paper;
 use App\Models\PaperPurchase;
 use App\Models\PaperRequestActivityLog;
 use App\Models\RequestedPaperToHome;
+use App\Models\StudentDetail;
 use App\Models\User;
 use Exception;
 use Illuminate\Http\Request;
@@ -51,6 +52,7 @@ class PaperPurchaseController extends Controller
             $checkout = $user->checkout($paper->stripe_price_id, [
                 'success_url' => $frontendUrl . '/parent/paper/payment-success?session_id={CHECKOUT_SESSION_ID}',
                 'cancel_url' => $frontendUrl . '/parent/paper/payment-cancel',
+                'payment_method_types' => ['card'],
                 'metadata' => [
                     'paper_id' => $paper->id,
                     'user_id' => $user->id, // Parent ID
@@ -105,6 +107,7 @@ class PaperPurchaseController extends Controller
             $checkout = $user->checkout($paper->stripe_price_id, [
                 'success_url' => $frontendUrl . '/paper/payment-success?session_id={CHECKOUT_SESSION_ID}',
                 'cancel_url' => $frontendUrl . '/paper/payment-cancel',
+                'payment_method_types' => ['card'],
                 'metadata' => [
                     'paper_id' => $paper->id,
                     'user_id' => $user->id, // Student ID
@@ -187,7 +190,10 @@ class PaperPurchaseController extends Controller
                 'paper.category:id,name',
                 'student:id,first_name,last_name,email', // For parent purchases
             ])
-                ->where('user_id', $user->id);
+                ->where(function ($q) use ($user) {
+                    $q->where('user_id', $user->id)
+                        ->orWhere('student_id', $user->id); // Include papers parent assigned to this student
+                });
 
             // Apply payment status filter if provided
             if ($paymentStatus) {
@@ -219,7 +225,11 @@ class PaperPurchaseController extends Controller
 
             $purchases = $purchases->map(function ($purchase) use ($activityLogs, $requestedPapers) {
                 $paper = $purchase->paper;
-                
+
+                if (!$paper) {
+                    return null;
+                }
+
                 // Get PDFs from media collection
                 $pdfs = $paper->getMedia('paper_pdfs')->map(function ($media) {
                     return [
@@ -291,13 +301,61 @@ class PaperPurchaseController extends Controller
                     'billing_information_id' => $billingInformationId, // Added billing_information_id
                     'request_home_activity_logs' => $paperActivityLogs, // Added activity logs
                 ];
-            });
+            })->filter()->values();
 
             return sendResponse($purchases, 'Purchased papers fetched successfully');
 
         } catch (Exception $e) {
             Log::error("Failed to fetch user purchases: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
             return errorLog("Failed to fetch user purchases: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+        }
+    }
+
+    /**
+     * Parent: assign a student to a paper purchase (or unassign).
+     * Purchase must belong to the authenticated parent; student must be one of the parent's students.
+     */
+    public function assignStudent(Request $request, $purchaseId)
+    {
+        $request->validate([
+            'student_id' => 'nullable|integer|exists:users,id',
+        ]);
+
+        try {
+            $parent = Auth::user();
+            $purchase = PaperPurchase::where('id', $purchaseId)->where('user_id', $parent->id)->first();
+
+            if (!$purchase) {
+                return sendError('Purchase not found or you do not have permission to update it.', [], 404);
+            }
+
+            $studentId = $request->input('student_id');
+
+            if ($studentId !== null) {
+                $isMyStudent = StudentDetail::where('parent_id', $parent->id)
+                    ->where('child_id', $studentId)
+                    ->exists();
+                if (!$isMyStudent) {
+                    return sendError('You can only assign one of your own students to this paper.', [], 403);
+                }
+            }
+
+            $purchase->student_id = $studentId;
+            $purchase->save();
+
+            $purchase->load('student:id,first_name,last_name,email');
+            $student = $purchase->student;
+            $studentName = $student ? trim($student->first_name . ' ' . $student->last_name) : null;
+
+            return sendResponse([
+                'purchase_id' => $purchase->id,
+                'student_id' => $purchase->student_id,
+                'student_name' => $studentName,
+                'student_email' => $student?->email ?? null,
+            ], $studentId ? 'Student assigned successfully.' : 'Student unassigned successfully.');
+        } catch (Exception $e) {
+            Log::error("Failed to assign student to paper purchase: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+            return sendError('An error occurred while updating the assignment.', [], 500);
         }
     }
 }

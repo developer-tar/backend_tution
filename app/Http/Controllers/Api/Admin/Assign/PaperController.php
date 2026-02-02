@@ -12,10 +12,13 @@ use App\Jobs\UpdatePaperStripePrice;
 use App\Jobs\ProcessPaperPdfJob;
 use App\Models\Paper;
 use App\Models\PaperAnswer;
+use App\Models\PaperExtract;
+use App\Models\PaperExtractQuestion;
 use App\Models\MockExamCategory;
 use App\Models\PaperOption;
 use App\Models\PaperPurchase;
 use App\Models\PaperQuestion;
+use App\Models\PaperExtractUserAnswer;
 use App\Models\PaperUserAnswer;
 use Exception;
 use Illuminate\Http\Request;
@@ -774,7 +777,10 @@ class PaperController extends Controller
             $userId = Auth::id();
 
             $purchases = PaperPurchase::with('paper:id,name,duration_minutes,total_marks')
-                ->where('user_id', $userId)
+                ->where(function ($q) use ($userId) {
+                    $q->where('user_id', $userId)
+                        ->orWhere('student_id', $userId); // Include papers parent assigned to this student
+                })
                 ->orderBy('purchased_at', 'desc')
                 ->get()
                 ->map(function ($purchase) {
@@ -803,8 +809,10 @@ class PaperController extends Controller
         try {
             $userId = Auth::id();
 
-            $purchase = PaperPurchase::where('user_id', $userId)
-                ->where('paper_id', $paperId)
+            $purchase = PaperPurchase::where('paper_id', $paperId)
+                ->where(function ($q) use ($userId) {
+                    $q->where('user_id', $userId)->orWhere('student_id', $userId);
+                })
                 ->first();
 
             if (!$purchase) {
@@ -836,52 +844,277 @@ class PaperController extends Controller
         }
     }
 
+    /**
+     * Get questions (with options) for a paper purchase. Student must have access (buyer or assigned).
+     * Loads from paper_extract_questions (PaperExtract) when available; falls back to paper_questions.
+     * If the paper has not been started yet, it is auto-started so the student can go straight to questions.
+     */
+    public function getQuestions($purchaseId)
+    {
+        try {
+            $userId = Auth::id();
+
+            $purchase = PaperPurchase::with('paper:id,name,duration_minutes,total_marks')->find($purchaseId);
+
+            if (!$purchase || ($purchase->user_id !== $userId && $purchase->student_id !== $userId)) {
+                return sendError('Purchase not found or you do not have access to this paper.', [], 404);
+            }
+
+            if ($purchase->payment_status !== config('constants.stripe_payment_status.PAID')) {
+                return sendError('Payment not completed for this paper.', [], 403);
+            }
+
+            if ($purchase->status == config('constants.mock_exam_purchase_status.COMPLETED')) {
+                return sendError('You have already completed this paper.', [], 400);
+            }
+
+            if (!$purchase->started_at) {
+                $purchase->update([
+                    'started_at' => now(),
+                    'status' => config('constants.mock_exam_purchase_status.IN_PROGRESS'),
+                ]);
+                $purchase->refresh();
+            }
+
+            if (!$purchase->paper) {
+                return sendError('Paper not found.', [], 404);
+            }
+
+            $paper = $purchase->paper;
+
+            // Prefer questions from paper_extract_questions (PaperExtract -> PaperExtractQuestion)
+            $extract = PaperExtract::where('paper_id', $paper->id)->first();
+
+            // If no extract by paper_id, try by paper name or slug (extract may have been created without paper_id)
+            if (!$extract) {
+                if (!empty($paper->name)) {
+                    $extract = PaperExtract::where('title', $paper->name)
+                        ->orWhere('slug', $paper->name)
+                        ->first();
+                }
+                if (!$extract && !empty($paper->slug)) {
+                    $extract = PaperExtract::where('slug', $paper->slug)->first();
+                }
+            }
+
+            // If we have an extract but it has no questions, try any other extract for this paper that has questions
+            if ($extract) {
+                $extractQuestions = PaperExtractQuestion::where('paper_extract_id', $extract->id)
+                    ->orderBy('order')
+                    ->orderBy('id')
+                    ->get();
+                if ($extractQuestions->isEmpty()) {
+                    $extractsWithQuestions = PaperExtract::where('paper_id', $paper->id)
+                        ->whereHas('questions')
+                        ->get();
+                    foreach ($extractsWithQuestions as $alt) {
+                        $extractQuestions = PaperExtractQuestion::where('paper_extract_id', $alt->id)
+                            ->orderBy('order')
+                            ->orderBy('id')
+                            ->get();
+                        if ($extractQuestions->isNotEmpty()) {
+                            $extract = $alt;
+                            break;
+                        }
+                    }
+                }
+                if ($extractQuestions->isNotEmpty()) {
+                    $questions = $extractQuestions->map(function ($q) {
+                        $optionsArray = [];
+                        $opts = $q->options;
+                        if (is_array($opts)) {
+                            $index = 0;
+                            foreach ($opts as $key => $text) {
+                                $optionText = '';
+                                if (is_string($text)) {
+                                    $optionText = $text;
+                                } elseif (is_array($text) && isset($text['text'])) {
+                                    $optionText = $text['text'];
+                                } elseif (is_array($text) && isset($text['option_text'])) {
+                                    $optionText = $text['option_text'];
+                                } else {
+                                    $optionText = (string) $text;
+                                }
+                                $optionsArray[] = [
+                                    'id' => "q{$q->id}_o{$index}",
+                                    'option_text' => $optionText,
+                                    'order' => $index,
+                                ];
+                                $index++;
+                            }
+                        }
+                        return [
+                            'id' => $q->id,
+                            'question_text' => $q->question_text ?? '',
+                            'question_type' => $q->question_type ?? 'multiple_choice',
+                            'marks' => (int) ($q->marks ?? 1),
+                            'order' => (int) ($q->order ?? 0),
+                            'options' => $optionsArray,
+                        ];
+                    })->values();
+
+                    return sendResponse([
+                        'duration_minutes' => (int) ($paper->duration_minutes ?? 120),
+                        'total_marks' => (int) ($paper->total_marks ?? 0),
+                        'questions' => $questions,
+                    ], 'Questions fetched successfully');
+                }
+            }
+
+            // Fallback: paper_questions (PaperQuestion + PaperOption)
+            $purchase->load([
+                'paper:id,name,duration_minutes,total_marks',
+                'paper.questions' => function ($q) {
+                    $q->orderBy('order')->orderBy('id');
+                },
+                'paper.questions.options' => function ($q) {
+                    $q->orderBy('order')->orderBy('id');
+                },
+            ]);
+            $paper = $purchase->paper;
+            $questions = $paper->questions->map(function ($q) {
+                return [
+                    'id' => $q->id,
+                    'question_text' => $q->question_text,
+                    'question_type' => 'multiple_choice',
+                    'marks' => (int) $q->marks,
+                    'order' => (int) ($q->order ?? 0),
+                    'options' => $q->options->map(function ($opt) {
+                        return [
+                            'id' => $opt->id,
+                            'option_text' => $opt->option_text,
+                            'order' => (int) ($opt->order ?? 0),
+                        ];
+                    })->values(),
+                ];
+            })->values();
+
+            return sendResponse([
+                'duration_minutes' => (int) ($paper->duration_minutes ?? 120),
+                'total_marks' => (int) ($paper->total_marks ?? 0),
+                'questions' => $questions,
+            ], 'Questions fetched successfully');
+        } catch (Exception $e) {
+            return errorLog("Failed to fetch paper questions: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+        }
+    }
+
     public function submitPaper(Request $request, $purchaseId)
     {
         $request->validate([
             'answers' => 'required|array',
-            'answers.*.question_id' => 'required|exists:paper_questions,id',
-            'answers.*.option_id' => 'required|exists:paper_options,id',
+            'answers.*.question_id' => 'required',
         ]);
 
         try {
             DB::beginTransaction();
 
-            $purchase = PaperPurchase::with('paper.questions')->findOrFail($purchaseId);
+            $purchase = PaperPurchase::with(['paper.questions', 'paper'])->findOrFail($purchaseId);
+            $userId = Auth::id();
 
-            if ($purchase->user_id !== Auth::id()) {
+            if ($purchase->user_id !== $userId && $purchase->student_id !== $userId) {
                 DB::rollBack();
                 return sendError('Unauthorized', [], 403);
             }
 
-            // Add validation: Paper must be started
             if (!$purchase->started_at) {
                 DB::rollBack();
                 return sendError('Paper has not been started', [], 400);
             }
 
-            // Add validation: Paper must not be completed
             if ($purchase->status == config('constants.mock_exam_purchase_status.COMPLETED')) {
                 DB::rollBack();
                 return sendError('Paper has already been completed', [], 400);
             }
 
-            // Validate all questions belong to the paper
+            $submittedQuestionIds = array_unique(array_column($request->answers, 'question_id'));
+
+            // Check if this is an extract-based paper (questions from paper_extract_questions)
+            $extract = PaperExtract::where('paper_id', $purchase->paper_id)->first();
+            $extractQuestionIds = $extract
+                ? PaperExtractQuestion::where('paper_extract_id', $extract->id)->pluck('id')->toArray()
+                : [];
+            $isExtractFlow = !empty($extractQuestionIds)
+                && count($submittedQuestionIds) === count($extractQuestionIds)
+                && empty(array_diff($submittedQuestionIds, $extractQuestionIds));
+
+            if ($isExtractFlow) {
+                // Submit for paper_extract_questions (multiple_choice, short_answer, essay)
+                $score = 0;
+                $totalMarks = 0;
+                foreach ($request->answers as $answer) {
+                    $questionId = (int) $answer['question_id'];
+                    $question = PaperExtractQuestion::find($questionId);
+                    if (!$question || $question->paper_extract_id != $extract->id) {
+                        DB::rollBack();
+                        return sendError('Invalid question submitted', [], 400);
+                    }
+                    $questionType = strtolower(trim($question->question_type ?? 'multiple_choice'));
+                    $isTextType = in_array($questionType, ['short_answer', 'essay', 'short answer', 'text'], true);
+
+                    if ($isTextType) {
+                        $answerText = isset($answer['answer_text']) ? trim((string) $answer['answer_text']) : '';
+                        $totalMarks += (int) ($question->marks ?? 1);
+                        PaperExtractUserAnswer::create([
+                            'paper_purchase_id' => $purchaseId,
+                            'paper_extract_question_id' => $questionId,
+                            'selected_option_key' => null,
+                            'answer_text' => $answerText,
+                            'is_correct' => 0,
+                        ]);
+                    } else {
+                        $optionId = $answer['option_id'] ?? null;
+                        $optionIndex = null;
+                        if (is_string($optionId) && preg_match('/^q\d+_o(\d+)$/', $optionId, $m)) {
+                            $optionIndex = (int) $m[1];
+                        }
+                        if ($optionIndex === null) {
+                            DB::rollBack();
+                            return sendError('Invalid option for question ' . $questionId, [], 400);
+                        }
+                        $opts = $question->options;
+                        $keys = is_array($opts) ? array_keys($opts) : [];
+                        $selectedKey = isset($keys[$optionIndex]) ? $keys[$optionIndex] : null;
+                        $isCorrect = ($selectedKey !== null && (string) $question->correct_answer === (string) $selectedKey);
+                        if ($isCorrect) {
+                            $score += (int) ($question->marks ?? 1);
+                        }
+                        $totalMarks += (int) ($question->marks ?? 1);
+                        PaperExtractUserAnswer::create([
+                            'paper_purchase_id' => $purchaseId,
+                            'paper_extract_question_id' => $questionId,
+                            'selected_option_key' => $selectedKey,
+                            'answer_text' => null,
+                            'is_correct' => $isCorrect,
+                        ]);
+                    }
+                }
+                $purchase->update([
+                    'completed_at' => now(),
+                    'score' => $score,
+                    'total_marks' => $totalMarks,
+                    'status' => config('constants.mock_exam_purchase_status.COMPLETED'),
+                ]);
+                DB::commit();
+                return sendResponse([
+                    'score' => $score,
+                    'total_marks' => $totalMarks,
+                    'percentage' => $totalMarks > 0 ? round(($score / $totalMarks) * 100, 2) : 0,
+                ], 'Paper submitted successfully');
+            }
+
+            // Original flow: paper_questions + paper_options
             $paperQuestionIds = $purchase->paper->questions->pluck('id')->toArray();
-            $submittedQuestionIds = array_column($request->answers, 'question_id');
-            
             if (count($submittedQuestionIds) !== count($paperQuestionIds) ||
                 !empty(array_diff($submittedQuestionIds, $paperQuestionIds))) {
                 DB::rollBack();
                 return sendError('Invalid questions submitted', [], 400);
             }
 
-            // Validate each option belongs to its question
             foreach ($request->answers as $answer) {
                 $option = PaperOption::where('id', $answer['option_id'])
                     ->where('paper_question_id', $answer['question_id'])
                     ->first();
-                
                 if (!$option) {
                     DB::rollBack();
                     return sendError("Option does not belong to question {$answer['question_id']}", [], 400);
@@ -890,19 +1123,14 @@ class PaperController extends Controller
 
             $score = 0;
             $totalMarks = 0;
-
             foreach ($request->answers as $answer) {
                 $question = PaperQuestion::find($answer['question_id']);
                 $option = PaperOption::find($answer['option_id']);
-                
-                // Fix: Properly check if option has an answer relationship
                 $isCorrect = PaperAnswer::where('paper_option_id', $option->id)->exists();
-
                 if ($isCorrect) {
                     $score += $question->marks;
                 }
                 $totalMarks += $question->marks;
-
                 PaperUserAnswer::create([
                     'paper_purchase_id' => $purchaseId,
                     'paper_question_id' => $answer['question_id'],
@@ -919,7 +1147,6 @@ class PaperController extends Controller
             ]);
 
             DB::commit();
-
             return sendResponse([
                 'score' => $score,
                 'total_marks' => $totalMarks,

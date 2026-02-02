@@ -131,13 +131,17 @@ return [
     'product_types' => [
         'course' => 1,
         'mock' => 2,
+        'mock_exam' => 2, // Alias for mock
         'paper' => 3,
         'papers' => 3,
+        'extracted_paper' => 3, // Alias for papers
     ],
     'table_map' => [
         'course' => 'courses',
         'mock' => 'mock_exams',
+        'mock_exam' => 'mock_exams',
         'papers' => 'papers',
+        'extracted_paper' => 'papers',
     ],
     'week_days' => [1 => 'Monday', 2 => 'Tuesday', 3 => 'Wednesday', 4 => 'Thursday', 5 => 'Friday', 6 => 'Saturday', 7 => 'Sunday'],
     'gap_between_start_end_time' => 29,
