@@ -33,47 +33,33 @@ class UpdatePaperRequest extends FormRequest
             'duration_minutes' => ['sometimes', 'nullable', 'integer', 'min:1'],
             'school_id' => ['sometimes', 'nullable', 'integer', 'exists:schools,id'],
             'paper_image' => ['sometimes', 'nullable', 'image', 'max:10240'],
-            
-            // NEW: PDF upload validation (max 10 PDFs, 10MB each)
-            'paper_pdfs' => ['sometimes', 'nullable', 'array', 'max:10'],
-            'paper_pdfs.*' => ['file', 'mimes:pdf', 'max:10240'],
-            
-            // NEW: PDF deletion validation
-            'deleted_pdf_ids' => ['sometimes', 'nullable', 'array'],
-            'deleted_pdf_ids.*' => ['integer'],
-            
-            // TEMPORARILY DISABLED - Questions/options/answers validation
-            // 'questions' => ['sometimes', 'required', 'array', 'min:1'],
-            // 'questions.*' => ['required', 'string', 'min:10', 'max:500'],
-            // 'options' => ['sometimes', 'required', 'array'],
-            // 'options.*' => ['required', 'array', 'min:2'],
-            // 'options.*.*' => ['required', 'string', 'min:1', 'max:255'],
-            // 'answers' => ['sometimes', 'required', 'array'],
-            // 'answers.*' => ['required', 'string', 'min:1', 'max:255'],
-            // 'duration_in_sec' => ['sometimes', 'required', 'array'],
-            // 'duration_in_sec.*' => ['required', 'integer', 'min:1'],
-            // 'marks' => ['sometimes', 'nullable', 'array'],
-            // 'marks.*' => ['nullable', 'integer', 'min:1'],
+
+            // Optional: when updating questions (manual create paper flow)
+            'questions' => ['sometimes', 'required', 'array', 'min:1'],
+            'questions.*' => ['required', 'string', 'min:1', 'max:2000'],
+            'options' => ['sometimes', 'required', 'array'],
+            'options.*' => ['required', 'array', 'min:2'],
+            'options.*.*' => ['required', 'string', 'min:1', 'max:255'],
+            'answers' => ['sometimes', 'required', 'array'],
+            'answers.*' => ['required', 'string', 'min:1', 'max:255'],
+            'duration_in_sec' => ['sometimes', 'required', 'array'],
+            'duration_in_sec.*' => ['required', 'integer', 'min:1'],
+            'marks' => ['sometimes', 'nullable', 'array'],
+            'marks.*' => ['nullable', 'integer', 'min:1'],
         ];
     }
 
-    /* TEMPORARILY DISABLED - Question validation logic
     public function withValidator(Validator $validator): void
     {
         $validator->after(function ($validator) {
-            if ($this->has('questions')) {
+            if ($this->has('questions') && is_array($this->input('questions')) && count($this->input('questions')) > 0) {
                 $questions = $this->input('questions', []);
                 $options = $this->input('options', []);
                 $answers = $this->input('answers', []);
                 $durations = $this->input('duration_in_sec', []);
-
                 $count = count($questions);
 
-                if (
-                    count($answers) !== $count ||
-                    count($options) !== $count ||
-                    count($durations) !== $count
-                ) {
+                if (count($answers) !== $count || count($options) !== $count || count($durations) !== $count) {
                     $validator->errors()->add('questions', 'The number of questions, options, answers, and durations must match.');
                 }
 
@@ -90,7 +76,6 @@ class UpdatePaperRequest extends FormRequest
             }
         });
     }
-    END TEMPORARILY DISABLED SECTION */
 
     public function messages(): array
     {
@@ -103,11 +88,6 @@ class UpdatePaperRequest extends FormRequest
             'price.required' => 'Price is required.',
             'price.min' => 'Price must be at least 0.',
             'school_id.exists' => 'Selected school does not exist.',
-            
-            // PDF upload messages
-            'paper_pdfs.max' => 'You can upload a maximum of 10 PDF files per paper.',
-            'paper_pdfs.*.mimes' => 'Each file must be a PDF.',
-            'paper_pdfs.*.max' => 'Each PDF file must not exceed 10MB.',
         ];
     }
 }

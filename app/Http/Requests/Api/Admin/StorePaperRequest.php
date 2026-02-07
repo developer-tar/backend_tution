@@ -33,27 +33,23 @@ class StorePaperRequest extends FormRequest
             'duration_minutes'  => ['nullable', 'integer', 'min:1'],
             'school_id'         => ['nullable', 'integer', 'exists:schools,id'],
 
-            // NEW: PDF upload validation (max 10 PDFs, 10MB each)
-            'paper_pdfs'        => ['nullable', 'array', 'max:10'],
-            'paper_pdfs.*'      => ['file', 'mimes:pdf', 'max:10240'],
             'paper_image'       => ['nullable', 'image', 'max:10240'],
 
-            // TEMPORARILY DISABLED - Questions/Options/Answers validation
-            // 'questions'         => ['required', 'array', 'min:1'],
-            // 'questions.*'       => ['required', 'string', 'min:10', 'max:500'],
-            // 'options'           => ['required', 'array'],
-            // 'options.*'         => ['required', 'array', 'min:2'],
-            // 'options.*.*'       => ['required', 'string', 'min:1', 'max:255'],
-            // 'answers'           => ['required', 'array'],
-            // 'answers.*'         => ['required', 'string', 'min:1', 'max:255'],
-            // 'duration_in_sec'   => ['required', 'array'],
-            // 'duration_in_sec.*' => ['required', 'integer', 'min:1'],
-            // 'marks'             => ['nullable', 'array'],
-            // 'marks.*'           => ['nullable', 'integer', 'min:1'],
+            // Manual create paper: questions/options/answers
+            'questions'         => ['required', 'array', 'min:1'],
+            'questions.*'       => ['required', 'string', 'min:1', 'max:2000'],
+            'options'           => ['required', 'array'],
+            'options.*'         => ['required', 'array', 'min:2'],
+            'options.*.*'       => ['required', 'string', 'min:1', 'max:255'],
+            'answers'           => ['required', 'array'],
+            'answers.*'         => ['required', 'string', 'min:1', 'max:255'],
+            'duration_in_sec'   => ['required', 'array'],
+            'duration_in_sec.*' => ['required', 'integer', 'min:1'],
+            'marks'             => ['nullable', 'array'],
+            'marks.*'           => ['nullable', 'integer', 'min:1'],
         ];
     }
 
-    /* TEMPORARILY DISABLED - Question validation logic
     public function withValidator(Validator $validator): void
     {
         $validator->after(function ($validator) {
@@ -64,7 +60,6 @@ class StorePaperRequest extends FormRequest
 
             $count = count($questions);
 
-            // Check if all arrays have same count
             if (
                 count($answers) !== $count ||
                 count($options) !== $count ||
@@ -73,21 +68,18 @@ class StorePaperRequest extends FormRequest
                 $validator->errors()->add('questions', 'The number of questions, options, answers, and durations must match.');
             }
 
-            // Validate each answer matches one of its options
             foreach ($answers as $index => $answer) {
                 if (!isset($options[$index]) || !in_array($answer, $options[$index], true)) {
                     $validator->errors()->add("answers.$index", "The answer must match one of the options for question #" . ($index + 1) . ".");
                 }
             }
 
-            // Validate marks count matches questions count
             $marks = $this->input('marks', []);
             if (!empty($marks) && count($marks) !== $count) {
                 $validator->errors()->add('marks', 'The number of marks must match the number of questions.');
             }
         });
     }
-    END TEMPORARILY DISABLED SECTION */
 
     public function messages(): array
     {
@@ -102,29 +94,10 @@ class StorePaperRequest extends FormRequest
             'school_id.exists' => 'Selected school does not exist.',
             'paper_image.image' => 'The uploaded file must be an image.',
             'paper_image.max' => 'Paper image size must not exceed 10MB.',
-
-            // PDF upload messages
-            'paper_pdfs.max' => 'You can upload a maximum of 10 PDF files per paper.',
-            'paper_pdfs.*.mimes' => 'Each file must be a PDF.',
-            'paper_pdfs.*.max' => 'Each PDF file must not exceed 10MB.',
-
-            // TEMPORARILY DISABLED - Question-related messages
-            // 'questions.required' => 'Questions are required.',
-            // 'questions.min' => 'At least one question is required.',
-            // 'questions.*.required' => 'Each question is required.',
-            // 'questions.*.min' => 'Each question must be at least 10 characters.',
-            // 'options.required' => 'Options are required.',
-            // 'options.*.required' => 'Each question must have options.',
-            // 'options.*.min' => 'Each question must have at least two options.',
-            // 'options.*.*.required' => 'Each option must be a non-empty string.',
-            // 'answers.required' => 'Answers are required.',
-            // 'answers.*.required' => 'Each question must have one answer.',
-            // 'duration_in_sec.required' => 'Duration is required for each question.',
-            // 'duration_in_sec.*.required' => 'Each question must have a duration.',
-            // 'duration_in_sec.*.integer' => 'Duration must be a number.',
-            // 'duration_in_sec.*.min' => 'Duration must be at least 1 second.',
-            // 'marks.*.integer' => 'Marks must be a number.',
-            // 'marks.*.min' => 'Marks must be at least 1.',
+            'questions.required' => 'At least one question is required.',
+            'questions.min' => 'At least one question is required.',
+            'options.*.min' => 'Each question must have at least two options.',
+            'duration_in_sec.required' => 'Duration is required for each question.',
         ];
     }
 }

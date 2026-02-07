@@ -1,0 +1,18 @@
+# Python Dependencies
+# NOTE: Some packages may not be available or may require special configuration
+
+langchain==0.1.0
+langchain-google-genai==0.0.5
+langchain-core==0.1.10
+python-dotenv==1.0.0
+pdf2image==1.17.0
+pillow==10.2.0
+opencv-python==4.9.0.80
+numpy==1.26.3
+pydantic==2.5.3
+rapidfuzz==3.6.1
+tqdm==4.66.1
+
+# NOTE: Installation may fail without proper API keys and configuration
+# Contact administrator for complete setup instructions
+

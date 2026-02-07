@@ -8,8 +8,10 @@ use App\Models\PaperExtractQuestion;
 use App\Models\MockExamCategory;
 use App\Models\Format;
 use App\Services\PaperExtractionService;
+use App\Jobs\ExtractPaperJob;
 use Exception;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -80,7 +82,7 @@ class PaperExtractController extends Controller
      */
     public function store(Request $request)
     {
-        Log::error('Request:', $request->all());
+        Log::debug('PaperExtract store request', $request->all());
 
         try {
             $validated = $request->validate([
@@ -168,12 +170,13 @@ class PaperExtractController extends Controller
 
             DB::commit();
 
-            // Queue extraction process (can be done asynchronously)
-            // For now, we'll process it synchronously
+            // Run extraction via ExtractPaperJob (synchronously so we can return extracted data)
+            $fullPath = Storage::disk('public')->path($filePath);
             try {
-                $this->extractionService->processExtraction($paperExtract);
+                $job = new ExtractPaperJob($paperExtract->id, null, $fullPath, null);
+                Bus::dispatchSync($job);
             } catch (Exception $e) {
-                Log::error("Extraction processing failed: {$e->getMessage()}");
+                Log::error("Extraction failed: {$e->getMessage()}");
                 $paperExtract->update([
                     'extraction_status' => 'failed',
                     'extraction_error' => $e->getMessage(),
@@ -182,7 +185,7 @@ class PaperExtractController extends Controller
 
             $paperExtract->load(['creator', 'questions']);
 
-            return sendResponse($paperExtract, 'Paper extract created successfully. Extraction in progress.', 201);
+            return sendResponse($paperExtract, 'Paper extract created successfully.', 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return sendError('Validation failed', $e->errors(), 422);
         } catch (Exception $e) {
@@ -397,4 +400,26 @@ class PaperExtractController extends Controller
             return errorLog("Failed to update question: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
+
+    public function upload(Request $request)
+    {
+        $path = $request->file('paper')->store('papers');
+
+        $paper = PaperExtract::create([
+            'file_path' => $path,
+            'status' => 'processing'
+        ]);
+
+        ExtractPaperJob::dispatch(
+            $paper->id,
+            null,
+            storage_path('app/' . $path),
+            null
+        );
+
+        return response()->json([
+            'message' => 'Paper uploaded. Extraction started.'
+        ]);
+    }
+
 }

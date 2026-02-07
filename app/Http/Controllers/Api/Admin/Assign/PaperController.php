@@ -9,7 +9,6 @@ use App\Http\Requests\Api\Admin\TogglePaperStatusRequest;
 use App\Jobs\PaperPrice;
 use App\Jobs\UploadPaperImageJob;
 use App\Jobs\UpdatePaperStripePrice;
-use App\Jobs\ProcessPaperPdfJob;
 use App\Models\Paper;
 use App\Models\PaperAnswer;
 use App\Models\PaperExtract;
@@ -198,8 +197,7 @@ class PaperController extends Controller
                         'duration_minutes' => $paper->duration_minutes,
                         'total_marks' => $paper->total_marks,
                         'school' => $paper->school?->name,
-                        // TEMPORARILY DISABLED - Questions count
-                        // 'questions_count' => $paper->questions->count(),
+                        'questions_count' => $paper->questions()->count(),
                         'pdfs_count' => $pdfs->count(),
                         'pdfs' => $pdfs, // Include complete PDF list
                         'status' => $paper->status,
@@ -258,11 +256,8 @@ class PaperController extends Controller
                         'created_at' => $media->created_at?->toDateTimeString(),
                     ];
                 })->sortBy('order')->values(),
-                
-                // TEMPORARILY DISABLED - Questions data
-                /* 
+
                 'questions' => $paper->questions->map(function ($question) {
-                    // Fix: Properly check if option has an answer relationship
                     $correctOption = $question->options->first(function($opt) {
                         return $opt->answer()->exists();
                     });
@@ -277,10 +272,9 @@ class PaperController extends Controller
                             'id' => $opt->id,
                             'option_text' => $opt->option_text,
                             'order' => $opt->order,
-                        ]),
+                        ])->values(),
                     ];
-                }),
-                */
+                })->values(),
             ];
 
             return sendResponse($data, 'Paper fetched successfully');
@@ -294,10 +288,8 @@ class PaperController extends Controller
         try {
             DB::beginTransaction();
 
-            // TEMPORARILY DISABLED - Marks calculation
-            // $marks = $request->input('marks', []);
-            // $totalMarks = !empty($marks) ? array_sum($marks) : count($request->questions);
-            $totalMarks = null; // Temporarily set to null (column is nullable)
+            $marks = $request->input('marks', []);
+            $totalMarks = !empty($marks) ? array_sum($marks) : (is_array($request->questions) ? count($request->questions) : 0);
          
             // Generate unique slug (include soft-deleted records in check)
             $baseSlug = Str::slug($request->name);
@@ -320,32 +312,33 @@ class PaperController extends Controller
                 'slug' => $slug,
             ]);
 
-            /* TEMPORARILY DISABLED - Questions/Options/Answers Logic
-            foreach ($request->input('questions') as $key => $question) {
-                $questionObj = PaperQuestion::create([
-                    'paper_id' => $paper->id,
-                    'question_text' => $question,
-                    'marks' => $marks[$key] ?? 1,
-                    'duration_in_sec' => $request->input('duration_in_sec')[$key],
-                    'order' => $key + 1,
-                ]);
-
-                foreach ($request->input('options')[$key] as $option) {
-                    $optionObj = PaperOption::create([
-                        'paper_question_id' => $questionObj->id,
-                        'option_text' => $option,
+            // Create paper with questions/options/answers (manual create paper flow)
+            if ($request->has('questions') && is_array($request->input('questions')) && count($request->input('questions')) > 0) {
+                foreach ($request->input('questions') as $key => $question) {
+                    $questionObj = PaperQuestion::create([
+                        'paper_id' => $paper->id,
+                        'question_text' => $question,
+                        'marks' => $marks[$key] ?? 1,
+                        'duration_in_sec' => $request->input('duration_in_sec')[$key] ?? 60,
+                        'order' => $key + 1,
                     ]);
 
-                    if ($optionObj->option_text == $request->input('answers')[$key]) {
-                        // Use updateOrCreate to prevent duplicates
-                        PaperAnswer::updateOrCreate(
-                            ['paper_option_id' => $optionObj->id],
-                            ['status' => config('constants.statuses.APPROVED')]
-                        );
+                    $options = $request->input('options')[$key] ?? [];
+                    foreach ($options as $option) {
+                        $optionObj = PaperOption::create([
+                            'paper_question_id' => $questionObj->id,
+                            'option_text' => $option,
+                        ]);
+
+                        if ($optionObj->option_text == ($request->input('answers')[$key] ?? null)) {
+                            PaperAnswer::updateOrCreate(
+                                ['paper_option_id' => $optionObj->id],
+                                ['status' => config('constants.statuses.APPROVED')]
+                            );
+                        }
                     }
                 }
             }
-            END TEMPORARILY DISABLED SECTION */
 
             if ($request->hasFile('paper_image')) {
                 try {
@@ -365,84 +358,6 @@ class PaperController extends Controller
                     }
                 } catch (Exception $e) {
                     Log::error("Failed to process image upload", ['error' => $e->getMessage()]);
-                }
-            }
-
-            // NEW: Handle multiple PDF uploads (max 10)
-            if ($request->hasFile('paper_pdfs')) {
-                try {
-                    $pdfFiles = $request->file('paper_pdfs');
-                    $pdfCount = count($pdfFiles);
-                    
-                    Log::info("PDF files detected in create request", [
-                        'count' => $pdfCount,
-                        'max_allowed' => 10
-                    ]);
-                    
-                    // Double-check the count (validation should catch this, but be safe)
-                    if ($pdfCount > 10) {
-                        Log::warning("Attempted to upload more than 10 PDFs", ['count' => $pdfCount]);
-                        throw new Exception('Maximum 10 PDF files allowed per paper.');
-                    }
-                    
-                    foreach ($pdfFiles as $index => $pdfFile) {
-                        Log::info("Processing PDF file", [
-                            'index' => $index,
-                            'original_name' => $pdfFile->getClientOriginalName(),
-                            'size' => $pdfFile->getSize(),
-                            'mime_type' => $pdfFile->getMimeType()
-                        ]);
-                        
-                        // Store PDF directly using Spatie Media Library (no temp storage needed)
-                        $media = $paper->addMedia($pdfFile)
-                            ->usingName(pathinfo($pdfFile->getClientOriginalName(), PATHINFO_FILENAME))
-                            ->usingFileName($pdfFile->getClientOriginalName())
-                            ->withCustomProperties([
-                                'order' => $index,
-                                'original_name' => $pdfFile->getClientOriginalName()
-                            ])
-                            ->toMediaCollection('paper_pdfs');
-                        
-                        Log::info("PDF file uploaded successfully", [
-                            'index' => $index,
-                            'media_id' => $media->id,
-                            'file_name' => $media->file_name
-                        ]);
-
-                        // Google Document AI se questions/answers extract karein
-                        // PDF ka actual path get karein
-                        // $pdfPath = $media->getPath();
-                        
-                        // if (file_exists($pdfPath)) {
-                        //     Log::info("Dispatching ProcessPaperPdfJob for PDF extraction", [
-                        //         'paper_id' => $paper->id,
-                        //         'media_id' => $media->id,
-                        //         'pdf_path' => $pdfPath
-                        //     ]);
-                            
-                        //     // Background job mein PDF process karein
-                        //     ProcessPaperPdfJob::dispatch($paper->id, $pdfPath, $media->id);
-                        // } else {
-                        //     Log::warning("PDF file path not found for processing", [
-                        //         'paper_id' => $paper->id,
-                        //         'media_id' => $media->id,
-                        //         'expected_path' => $pdfPath
-                        //     ]);
-                        // }
-                    }
-                    
-                    Log::info("All PDF files uploaded successfully", [
-                        'paper_id' => $paper->id,
-                        'total_pdfs' => $pdfCount
-                    ]);
-                } catch (Exception $e) {
-                    Log::error("Failed to process PDF uploads", [
-                        'error' => $e->getMessage(),
-                        'paper_id' => $paper->id,
-                        'trace' => $e->getTraceAsString()
-                    ]);
-                    // Re-throw to rollback transaction
-                    throw $e;
                 }
             }
 
@@ -502,37 +417,30 @@ class PaperController extends Controller
                 $paper->update($updateData);
             }
 
-            /* TEMPORARILY DISABLED - Questions/Options/Answers Update Logic
-            // Handle questions/options/answers update if provided
-            if ($request->has('questions') && $request->has('options') && $request->has('answers')) {
-                Log::info("Updating questions/options/answers for paper ID: {$id}");
-
-                // Delete existing questions (cascade will delete options and answers)
+            // Handle questions/options/answers update if provided (manual create paper flow)
+            if ($request->has('questions') && is_array($request->input('questions')) && count($request->input('questions')) > 0) {
                 $paper->questions()->delete();
-
                 $marks = $request->input('marks', []);
                 $totalMarks = !empty($marks) ? array_sum($marks) : count($request->questions);
-                
-                // Update total_marks if questions are being updated
                 $paper->update(['total_marks' => $totalMarks]);
 
-                // Create new questions, options, and answers
                 foreach ($request->input('questions') as $key => $question) {
                     $questionObj = PaperQuestion::create([
                         'paper_id' => $paper->id,
                         'question_text' => $question,
                         'marks' => $marks[$key] ?? 1,
-                        'duration_in_sec' => $request->input('duration_in_sec')[$key],
+                        'duration_in_sec' => $request->input('duration_in_sec')[$key] ?? 60,
                         'order' => $key + 1,
                     ]);
 
-                    foreach ($request->input('options')[$key] as $option) {
+                    $options = $request->input('options')[$key] ?? [];
+                    foreach ($options as $option) {
                         $optionObj = PaperOption::create([
                             'paper_question_id' => $questionObj->id,
                             'option_text' => $option,
                         ]);
 
-                        if ($optionObj->option_text == $request->input('answers')[$key]) {
+                        if ($optionObj->option_text == ($request->input('answers')[$key] ?? null)) {
                             PaperAnswer::updateOrCreate(
                                 ['paper_option_id' => $optionObj->id],
                                 ['status' => config('constants.statuses.APPROVED')]
@@ -540,10 +448,7 @@ class PaperController extends Controller
                         }
                     }
                 }
-
-                Log::info("Questions/options/answers updated successfully for paper ID: {$id}");
             }
-            END TEMPORARILY DISABLED SECTION */
 
             // Handle paper_image: upload new or delete existing
             if ($request->hasFile('paper_image')) {
@@ -588,128 +493,6 @@ class PaperController extends Controller
                         'error' => $e->getMessage(),
                         'paper_id' => $paper->id
                     ]);
-                }
-            }
-
-            // Handle PDF deletion: delete specified PDFs by media ID
-            if ($request->has('deleted_pdf_ids') && is_array($request->input('deleted_pdf_ids'))) {
-                try {
-                    $deletedPdfIds = $request->input('deleted_pdf_ids');
-                    Log::info("PDF deletion requested", [
-                        'paper_id' => $paper->id,
-                        'deleted_pdf_ids' => $deletedPdfIds
-                    ]);
-                    
-                    // Get all PDFs for this paper
-                    $pdfs = $paper->getMedia('paper_pdfs');
-                    
-                    foreach ($deletedPdfIds as $mediaId) {
-                        $media = $pdfs->where('id', $mediaId)->first();
-                        
-                        if ($media) {
-                            $media->delete();
-                            Log::info("PDF deleted successfully", [
-                                'paper_id' => $paper->id,
-                                'media_id' => $mediaId,
-                                'file_name' => $media->file_name
-                            ]);
-                        } else {
-                            Log::warning("PDF not found for deletion", [
-                                'paper_id' => $paper->id,
-                                'media_id' => $mediaId
-                            ]);
-                        }
-                    }
-                } catch (Exception $e) {
-                    Log::error("Failed to delete PDFs", [
-                        'error' => $e->getMessage(),
-                        'paper_id' => $paper->id
-                    ]);
-                    // Don't throw - allow update to continue
-                }
-            }
-
-            // NEW: Handle multiple PDF uploads (max 10)
-            if ($request->hasFile('paper_pdfs')) {
-                try {
-                    $pdfFiles = $request->file('paper_pdfs');
-                    $pdfCount = count($pdfFiles);
-                    
-                    Log::info("PDF files detected in update request", [
-                        'count' => $pdfCount,
-                        'max_allowed' => 10,
-                        'paper_id' => $paper->id
-                    ]);
-                    
-                    // Double-check the count (validation should catch this, but be safe)
-                    if ($pdfCount > 10) {
-                        Log::warning("Attempted to upload more than 10 PDFs in update", ['count' => $pdfCount]);
-                        throw new Exception('Maximum 10 PDF files allowed per paper.');
-                    }
-                    
-                    // Get existing PDF count to ensure we don't exceed 10 total
-                    $existingPdfCount = $paper->getMedia('paper_pdfs')->count();
-                    if (($existingPdfCount + $pdfCount) > 10) {
-                        throw new Exception('Total PDF files cannot exceed 10. Please delete some PDFs first.');
-                    }
-                    
-                    foreach ($pdfFiles as $index => $pdfFile) {
-                        Log::info("Processing PDF file in update", [
-                            'index' => $index,
-                            'original_name' => $pdfFile->getClientOriginalName(),
-                            'size' => $pdfFile->getSize(),
-                            'mime_type' => $pdfFile->getMimeType()
-                        ]);
-                        
-                        // Store PDF directly using Spatie Media Library (no temp storage needed)
-                        $media = $paper->addMedia($pdfFile)
-                            ->usingName(pathinfo($pdfFile->getClientOriginalName(), PATHINFO_FILENAME))
-                            ->usingFileName($pdfFile->getClientOriginalName())
-                            ->withCustomProperties([
-                                'order' => $existingPdfCount + $index, // Maintain order after existing PDFs
-                                'original_name' => $pdfFile->getClientOriginalName()
-                            ])
-                            ->toMediaCollection('paper_pdfs');
-                        
-                        Log::info("PDF file uploaded successfully in update", [
-                            'index' => $index,
-                            'media_id' => $media->id,
-                            'file_name' => $media->file_name
-                        ]);
-
-                        // Google Document AI se questions/answers extract karein
-                        // $pdfPath = $media->getPath();
-                        
-                        // if (file_exists($pdfPath)) {
-                        //     Log::info("Dispatching ProcessPaperPdfJob for PDF extraction (update)", [
-                        //         'paper_id' => $paper->id,
-                        //         'media_id' => $media->id,
-                        //         'pdf_path' => $pdfPath
-                        //     ]);
-                            
-                        //     // Background job mein PDF process karein
-                        //     ProcessPaperPdfJob::dispatch($paper->id, $pdfPath, $media->id);
-                        // } else {
-                        //     Log::warning("PDF file path not found for processing (update)", [
-                        //         'paper_id' => $paper->id,
-                        //         'media_id' => $media->id,
-                        //         'expected_path' => $pdfPath
-                        //     ]);
-                        // }
-                    }
-                    
-                    Log::info("All PDF files uploaded successfully in update", [
-                        'paper_id' => $paper->id,
-                        'total_pdfs' => $pdfCount
-                    ]);
-                } catch (Exception $e) {
-                    Log::error("Failed to process PDF uploads in update", [
-                        'error' => $e->getMessage(),
-                        'paper_id' => $paper->id,
-                        'trace' => $e->getTraceAsString()
-                    ]);
-                    // Re-throw to rollback transaction
-                    throw $e;
                 }
             }
 
@@ -1157,5 +940,6 @@ class PaperController extends Controller
             return errorLog("Failed to submit paper: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
+
 }
 

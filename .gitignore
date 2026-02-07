@@ -24,3 +24,10 @@ yarn-error.log
 /.htaccess
 /storage/logs/*
 !storage/logs/.gitignore
+# PDF extraction temp images - must untrack first (see below)
+**/paper_extract/paper_extractor/page_images/
+**/page_images/*.png
+python/paper_extract/.venv/
+python/paper_extract/venv/
+venv/
+.venv/

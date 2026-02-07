@@ -39,6 +39,17 @@ return [
         'pk_test' => env('STRIPE_KEY'),
     ],
 
+    'gemini' => [
+        'key' => trim((string) (env('GOOGLE_API_KEY') ?? '')),
+    ],
+
+    /*
+     * Poppler bin directory for PDF→image (pdf2image). Required when running
+     * Python from PHP so the subprocess can find pdftoppm. Set in .env if needed.
+     * Example (Windows): POPPLER_PATH=C:\laragon\bin\poppler\Library\bin
+     */
+    'poppler_path' => env('POPPLER_PATH'),
+
     'google_document_ai' => [
         'credentials_path' => env('GOOGLE_APPLICATION_CREDENTIALS'),
         'project_id' => env('GOOGLE_CLOUD_PROJECT_ID'),
