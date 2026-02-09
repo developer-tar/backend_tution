@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\AdminLoginRequest;
+use App\Http\Requests\Api\TutorLoginRequest;
 use App\Http\Requests\Api\ChangePasswordRequest;
 use App\Http\Requests\Api\LoginRequest;
 use App\Http\Requests\Api\RegisterRequest;
@@ -105,6 +106,54 @@ class AuthController extends Controller
             return errorLog("Error occurred in admin login: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
         }
     }
+
+    /**
+     * Tutor-only login for tutor panel. Returns token with Tutor scope.
+     */
+    public function tutorLogin(TutorLoginRequest $request)
+    {
+        try {
+            $credentials = $request->only('email', 'password');
+            if (!Auth::attempt($credentials)) {
+                return sendError('Unauthorized', ['error' => 'Invalid email or password.'], 401);
+            }
+            $user = Auth::user();
+            $role = $user->roles()->first();
+            if (!$role) {
+                return sendError('Not Found', ['error' => 'User role not found.'], 404);
+            }
+            if ($role->name !== config('constants.roles.TUTOR')) {
+                return sendError('Unauthorized', ['error' => 'Only tutors can access the tutor panel. Use the tutor login page.'], 403);
+            }
+            if ($user->status != config('constants.statuses.APPROVED')) {
+                return sendError('Error', ['error' => 'This user is not active yet.'], 400);
+            }
+            $scopeName = $this->scopeForRole($role->name, 'Tutor');
+            $tokenResult = $user->createToken('tutorToken', [$scopeName]);
+            $response = [
+                'success' => true,
+                'data' => [
+                    'id' => $user->id,
+                    'full_name' => $user->full_name,
+                    'email' => $user->email,
+                    'role' => $role->name,
+                    'access_token' => $tokenResult->accessToken,
+                ],
+                'message' => 'Tutor login successful.',
+            ];
+            return Response::json($response, 200);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'data' => ['error' => $e->getMessage()],
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (Exception $e) {
+            return errorLog("Error in tutor login: {$e->getMessage()} at {$e->getFile()}:{$e->getLine()}");
+        }
+    }
+
     public function login(LoginRequest $request)
     {
 
@@ -328,6 +377,9 @@ class AuthController extends Controller
 
                 if ($role && $request->filled('choose_the_role') && $role?->id != $request->choose_the_role) {
                     return sendError('Unauthorised', ['error' => "Credentails and user role has doesn't match"], 401);
+                }
+                if ($role?->name === config('constants.roles.TUTOR')) {
+                    return sendError('Unauthorized', ['error' => 'Tutors must use the tutor panel login page.'], 403);
                 }
                 $status = $user->status;
                 if ($status == config('constants.statuses.APPROVED')) {

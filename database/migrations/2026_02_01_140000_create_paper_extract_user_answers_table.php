@@ -19,7 +19,7 @@ return new class extends Migration
             $table->unsignedTinyInteger('is_correct')->default(0);
             $table->timestamps();
 
-            $table->index(['paper_purchase_id', 'paper_extract_question_id']);
+            $table->index(['paper_purchase_id', 'paper_extract_question_id'], 'peua_purchase_question_idx');
         });
     }
 

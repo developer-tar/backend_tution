@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\StripeController;
 use App\Http\Controllers\Api\TestWebhookController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\{CartController, AuthController, CommonDataController};
+use App\Http\Controllers\Api\ClassroomController;
 use App\Http\Controllers\Api\FrontendController;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -28,6 +29,9 @@ Route::post('email/resend-verification', [AuthController::class, 'resendVerifica
 
 //login api & register  for admin role
 Route::post('admin/login', [AuthController::class, 'AdminLogin']);
+
+// Tutor panel login (separate route; tutors cannot use general login)
+Route::post('tutor/login', [AuthController::class, 'tutorLogin']);
 
 
 //common data 
@@ -58,6 +62,9 @@ Route::get('mock-exam/categories', [FrontendController::class, 'mockExamCategori
 Route::get('paper/view', [FrontendController::class, 'paperView']);
 Route::get('paper/{slug}/details', [FrontendController::class, 'paperDetails']);
 Route::get('paper/categories', [FrontendController::class, 'paperCategories']);
+
+// Classroom join (optional auth for display name; returns Jitsi room data)
+Route::get('classroom/join/{roomCode}', [ClassroomController::class, 'join']);
 
 // Common webhook for both subscriptions and mock exam purchases
 Route::post('stripe/webhook', [StripeController::class, 'handleWebhook']);

@@ -80,6 +80,17 @@ class User extends Authenticatable
         return $this->hasMany(StudentDetail::class, 'parent_id', 'id');
     }
 
+    public function tutorCourses()
+    {
+        return $this->belongsToMany(Course::class, 'course_tutor', 'user_id', 'course_id')
+            ->select('courses.*');
+    }
+
+    public function classrooms()
+    {
+        return $this->hasMany(Classroom::class, 'user_id');
+    }
+
     /**
      * Get the email address that should be used for verification.
      *

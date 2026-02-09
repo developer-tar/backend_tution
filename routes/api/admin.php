@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\Admin\ParentController;
 use App\Http\Controllers\Api\Admin\PaperPurchaseController;
 use App\Http\Controllers\Api\Admin\PaperExtractController;
 use App\Http\Controllers\Api\Admin\StudentController;
+use App\Http\Controllers\Api\Admin\TutorController;
 use App\Http\Controllers\Api\Admin\CourseInstallmentController;
 use Illuminate\Support\Facades\Route;
 
@@ -128,6 +129,12 @@ Route::put('parent/{parent}', [ParentController::class, 'update']); // Update pa
 Route::patch('parent/{parent}', [ParentController::class, 'update']); // Update parent (partial)
 Route::delete('parent/{parent}', [ParentController::class, 'destroy']); // Delete parent and all students
 //end parent management routing
+
+//start tutor management routing (assign courses to tutors)
+Route::get('tutors', [TutorController::class, 'index']);
+Route::get('tutors/courses-for-assignment', [TutorController::class, 'coursesForAssignment']);
+Route::get('tutors/{id}', [TutorController::class, 'show']);
+Route::put('tutors/{id}/courses', [TutorController::class, 'updateCourses']);
 
 //start student management routing
 Route::get('students-with-courses', [StudentController::class, 'index']); // Get all students with assigned courses

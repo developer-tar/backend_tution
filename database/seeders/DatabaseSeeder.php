@@ -3,8 +3,8 @@
 namespace Database\Seeders;
 
 use App\Models\User;
-// use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 
 class DatabaseSeeder extends Seeder
 {
@@ -26,6 +26,7 @@ class DatabaseSeeder extends Seeder
             RegionsTableSeeder::class,
             GendersTableSeeder::class,
             TargetSchoolsSeeder::class,
+            SubjectSeeder::class,
         ]);
 
         // Seed parent and student data
@@ -33,11 +34,19 @@ class DatabaseSeeder extends Seeder
             ParentStudentSeeder::class,
         ]);
 
-        // Create test admin user
-        User::factory()->create([
-            'first_name' => 'Test',
-            'last_name' => 'User',
-            'email' => 'test@example.com',
+        // Seed tutors (for tutor panel login)
+        $this->call([
+            TutorSeeder::class,
         ]);
+
+        // Create test admin user (idempotent)
+        User::firstOrCreate(
+            ['email' => 'test@example.com'],
+            [
+                'first_name' => 'Test',
+                'last_name' => 'User',
+                'password' => Hash::make('password'),
+            ]
+        );
     }
 }

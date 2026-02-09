@@ -28,6 +28,10 @@ class ManageStudentRecord extends Model {
     public function course() {
         return $this->belongsTo(Course::class, 'course_id', 'id');
     }
+
+    public function buyer() {
+        return $this->belongsTo(User::class, 'buyer_id', 'id');
+    }
     public function parent() {
         return $this->belongsTo(ManageStudentRecord::class, 'parent_id', 'id');
     }

@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Models\User;
 use App\Http\Controllers\Api\Admin\MasterFormTestController;
+use App\Http\Controllers\Api\ClassroomController;
 
 Route::get('/', function () {
     return view('welcome');
@@ -21,6 +22,11 @@ Route::get('/test-swagger-route', function () {
 Route::get('/users/{user}', function (User $user) {
     dd($user);
 });
+
+// Classroom live (Jitsi Meet) – requires auth for display name
+Route::get('classroom/live/{roomCode}', [ClassroomController::class, 'live'])
+    ->middleware('auth')
+    ->name('classroom.live');
 
 // Master Form Test Interface Routes
 Route::get('/master-form-test', [MasterFormTestController::class, 'index'])->name('master-form.test');

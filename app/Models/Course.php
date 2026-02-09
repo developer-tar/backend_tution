@@ -24,6 +24,16 @@ class Course extends Model implements HasMedia
     {
         return $this->belongsToMany(Subject::class, 'course_subject', 'course_id', 'subject_id')->wherePivotNull('deleted_at');
     }
+
+    public function tutors()
+    {
+        return $this->belongsToMany(User::class, 'course_tutor', 'course_id', 'user_id');
+    }
+
+    public function classrooms()
+    {
+        return $this->hasMany(Classroom::class);
+    }
     public function locations()
     {
         return $this->belongsToMany(Location::class, 'course_location', 'course_id', 'location_id');

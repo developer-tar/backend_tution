@@ -296,7 +296,13 @@ class AssignmentController extends Controller
                 ]);
             }
 
-            $subjects = AcdemicCourse::with('courses:id', 'courses.subjects:id,name')->where('id', $request->acdemic_course_id)->select('id', 'course_id')->get();
+            $subjects = AcdemicCourse::with([
+                'courses:id',
+                'courses.subjects' => function ($q) {
+                    $q->where('status', config('constants.statuses.APPROVED'))
+                        ->select('subjects.id', 'subjects.name');
+                },
+            ])->where('id', $request->acdemic_course_id)->select('id', 'course_id')->get();
 
             $assignments = CourseAssignment::with('weeks:id,start_date,end_date,week_number')->where('acdemic_course_id', $request->acdemic_course_id)->select('id', 'week_id')->get();
 
@@ -317,14 +323,14 @@ class AssignmentController extends Controller
             }
 
             $data['subjects'] = $subjects->flatMap(function ($item) {
-                $courseSubjects = $item['courses']['subjects'];
+                $courseSubjects = $item['courses']['subjects'] ?? collect();
                 return $courseSubjects->map(function ($subject) {
                     return [
                         'id' => $subject['id'],
                         'name' => $subject['name'],
                     ];
                 });
-            })->values();
+            })->filter(fn ($s) => !empty($s['id']))->unique('id')->values();
 
             $data['assignments'] = $assignments->map(function ($assignment) {
                 $week = $assignment['weeks'];

@@ -137,6 +137,12 @@ class CommonDataController extends Controller
                         ->whereNull('deleted_at')
                         ->orderBy('name', 'asc')
                         ->get();
+                } elseif ($param === 'Subjects') {
+                    $data = Subject::select('id', 'name')
+                        ->where('status', config('constants.statuses.APPROVED'))
+                        ->whereNull('deleted_at')
+                        ->orderBy('name', 'asc')
+                        ->get();
                 } elseif (array_key_exists($param, $modelMap)) {
                     $model = $modelMap[$param];
                     $data = $model::select('id', 'name')->get();

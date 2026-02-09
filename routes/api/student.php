@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\Student\ViewedContentController;
 use App\Http\Controllers\Api\Student\WeeklyPerformanceController;
 use App\Http\Controllers\Api\Student\DashboardController;
 use App\Http\Controllers\Api\Student\CertificateController;
+use App\Http\Controllers\Api\Student\ClassController;
 use App\Http\Controllers\Api\NotificationController;
 use Illuminate\Support\Facades\Route;
 
@@ -109,6 +110,9 @@ Route::post('notifications/mark-all-as-read', [NotificationController::class, 'm
 Route::get('certificates', [CertificateController::class, 'index']);
 Route::get('certificates/{id}', [CertificateController::class, 'show']);
 Route::get('certificates/{id}/download', [CertificateController::class, 'download']);
+
+//classes (live classrooms - Jitsi) - upcoming, ongoing, ended
+Route::get('classes', [ClassController::class, 'index']);
 
 //hierarchical data routes
 Route::get('hierarchical-data', [AssignmentController::class, 'getHierarchicalData']);
