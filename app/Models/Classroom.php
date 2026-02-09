@@ -20,6 +20,7 @@ class Classroom extends Model
         'capacity',
         'schedule_summary',
         'room_code',
+        'drawing_enabled',
         'start_time',
         'end_time',
     ];
@@ -27,6 +28,7 @@ class Classroom extends Model
     protected function casts(): array
     {
         return [
+            'drawing_enabled' => 'boolean',
             'start_time' => 'datetime',
             'end_time' => 'datetime',
         ];

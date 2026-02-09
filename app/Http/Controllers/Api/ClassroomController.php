@@ -26,6 +26,7 @@ class ClassroomController extends Controller
                     'id' => $classroom->id,
                     'name' => $classroom->name,
                     'room_code' => $classroom->room_code,
+                    'drawing_enabled' => $classroom->drawing_enabled ?? true,
                     'description' => $classroom->description,
                     'schedule_summary' => $classroom->schedule_summary,
                     'start_time' => $classroom->start_time?->toIso8601String(),
