@@ -25,3 +25,5 @@ Route::get('certificates', [TutorDashboardController::class, 'certificates']);
 // Classrooms (Jitsi Meet)
 Route::get('classrooms', [ClassroomController::class, 'index']);
 Route::post('classrooms', [ClassroomController::class, 'store']);
+Route::post('classrooms/{id}/start', [ClassroomController::class, 'startMeeting']);
+Route::post('classrooms/{id}/end', [ClassroomController::class, 'endMeeting']);

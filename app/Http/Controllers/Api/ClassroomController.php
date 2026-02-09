@@ -17,6 +17,8 @@ class ClassroomController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
+        $statusOrder = [Classroom::STATUS_PENDING => 0, Classroom::STATUS_ONGOING => 1, Classroom::STATUS_ENDED => 2];
+
         $classrooms = Classroom::where('user_id', auth()->id())
             ->with(['course:id,name', 'tutor:id,first_name,last_name'])
             ->orderBy('start_time')
@@ -35,7 +37,12 @@ class ClassroomController extends Controller
                     'course' => $classroom->course ? ['id' => $classroom->course->id, 'name' => $classroom->course->name] : null,
                     'tutor' => $classroom->tutor ? ['id' => $classroom->tutor->id, 'full_name' => $classroom->tutor->full_name] : null,
                 ];
-            });
+            })
+            ->sortBy(function ($row) use ($statusOrder) {
+                $order = $statusOrder[$row['status']] ?? 3;
+                return [$order, $row['start_time'] ?? ''];
+            })
+            ->values();
 
         return response()->json([
             'success' => true,
@@ -68,6 +75,7 @@ class ClassroomController extends Controller
             ], 403);
         }
 
+        $startTime = isset($validated['start_time']) ? $validated['start_time'] : now();
         $classroom = Classroom::create([
             'course_id' => $course->id,
             'user_id' => $user->id,
@@ -75,8 +83,8 @@ class ClassroomController extends Controller
             'description' => $validated['description'] ?? null,
             'capacity' => $validated['capacity'] ?? null,
             'schedule_summary' => $validated['schedule_summary'] ?? null,
-            'start_time' => isset($validated['start_time']) ? $validated['start_time'] : null,
-            'end_time' => isset($validated['end_time']) ? $validated['end_time'] : null,
+            'start_time' => $startTime,
+            'end_time' => $validated['end_time'] ?? null,
         ]);
 
         $classroom->load(['course:id,name', 'tutor:id,first_name,last_name']);
@@ -115,6 +123,62 @@ class ClassroomController extends Controller
                 'room_name' => $classroom->room_code,
                 'display_name' => $displayName,
             ],
+        ]);
+    }
+
+    /**
+     * Start a meeting: set start_time to now if not already set. Called when tutor clicks Start on a scheduled class.
+     */
+    public function startMeeting(int $id): JsonResponse
+    {
+        $classroom = Classroom::where('id', $id)
+            ->where('user_id', auth()->id())
+            ->first();
+
+        if (!$classroom) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Classroom not found or you are not the tutor.',
+            ], 404);
+        }
+
+        if (!$classroom->start_time) {
+            $classroom->start_time = now();
+            $classroom->save();
+        }
+
+        $classroom->load(['course:id,name', 'tutor:id,first_name,last_name']);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Meeting started.',
+            'classroom' => $classroom,
+        ]);
+    }
+
+    /**
+     * End a meeting: set end_time to now. Tutor calls this when they leave the meeting.
+     */
+    public function endMeeting(int $id): JsonResponse
+    {
+        $classroom = Classroom::where('id', $id)
+            ->where('user_id', auth()->id())
+            ->first();
+
+        if (!$classroom) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Classroom not found or you are not the tutor.',
+            ], 404);
+        }
+
+        $classroom->end_time = now();
+        $classroom->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Meeting ended.',
+            'classroom' => $classroom->fresh(['course:id,name', 'tutor:id,first_name,last_name']),
         ]);
     }
 

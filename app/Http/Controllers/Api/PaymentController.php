@@ -7,6 +7,7 @@ use App\Models\MockExam;
 use App\Models\Paper;
 use App\Models\User;
 use App\Services\BasketOrderFulfillmentService;
+use App\Services\SubscriptionFulfillmentService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Laravel\Cashier\Cashier;
@@ -530,13 +531,6 @@ class PaymentController extends Controller
                     'message' => 'Payment not completed',
                 ], 400);
             }
-            if ($session->mode !== 'payment') {
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Not a basket one-time payment',
-                    'data' => ['fulfilled' => false],
-                ]);
-            }
 
             $sessionArray = json_decode(json_encode($session), true);
             $sessionUserId = $sessionArray['metadata']['user_id'] ?? null;
@@ -545,6 +539,27 @@ class PaymentController extends Controller
                     'success' => false,
                     'message' => 'Unauthorized',
                 ], 403);
+            }
+
+            $fulfilled = false;
+
+            if ($session->mode === 'subscription') {
+                // Save subscription to DB when user returns from Stripe (webhook may not fire on localhost)
+                $subService = app(SubscriptionFulfillmentService::class);
+                $fulfilled = $subService->fulfillFromSession($sessionArray);
+                return response()->json([
+                    'success' => true,
+                    'message' => $fulfilled ? 'Subscription saved successfully' : 'Subscription already recorded',
+                    'data' => ['fulfilled' => $fulfilled],
+                ]);
+            }
+
+            if ($session->mode !== 'payment') {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Not a basket one-time payment',
+                    'data' => ['fulfilled' => false],
+                ]);
             }
 
             $service = app(BasketOrderFulfillmentService::class);

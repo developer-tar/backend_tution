@@ -36,12 +36,16 @@ class Classroom extends Model
 
     /**
      * Get status based on current time: pending, ongoing, or ended.
+     * If start_time is set and end_time is null, meeting is ongoing (tutor started, not yet ended).
      */
     public function getStatusAttribute(): string
     {
         $now = Carbon::now();
-        if (!$this->start_time || !$this->end_time) {
+        if (!$this->start_time) {
             return self::STATUS_PENDING;
+        }
+        if (!$this->end_time) {
+            return $now->lt($this->start_time) ? self::STATUS_PENDING : self::STATUS_ONGOING;
         }
         if ($now->lt($this->start_time)) {
             return self::STATUS_PENDING;

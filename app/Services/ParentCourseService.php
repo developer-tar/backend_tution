@@ -16,24 +16,47 @@ use App\Models\StudentDetail;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Laravel\Cashier\Subscription;
 
 class ParentCourseService
 {
     /**
-     * Get parent's active subscriptions
+     * Get parent's active subscription stripe_price IDs (from all subscription items).
+     * Used to determine which courses the parent has subscribed to.
      */
     public function getParentSubscriptions($parentId)
     {
         $parent = User::find($parentId);
-        
+
         if (!$parent) {
             return [];
         }
 
-        return $parent->subscriptions()
+        $subscriptions = Subscription::where('user_id', $parentId)
             ->where('stripe_status', config('constants.active_status'))
-            ->whereNotNull('stripe_price')
-            ->pluck('stripe_price')
+            ->with('items')
+            ->get();
+
+        return $subscriptions->flatMap(function ($sub) {
+            return $sub->items->pluck('stripe_price')->filter();
+        })->unique()->values()->toArray();
+    }
+
+    /**
+     * Get course IDs the parent has an active subscription for (for "Subscribed" UI on course page).
+     *
+     * @return int[]
+     */
+    public function getSubscribedCourseIds($parentId)
+    {
+        $subscriptionPrices = $this->getParentSubscriptions($parentId);
+        if (empty($subscriptionPrices)) {
+            return [];
+        }
+        return CoursePrice::whereIn('stripe_price_id', $subscriptionPrices)
+            ->pluck('course_id')
+            ->unique()
+            ->values()
             ->toArray();
     }
 
