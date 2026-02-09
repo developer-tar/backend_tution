@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Models\CourseRegistrationPayment;
 use App\Models\CourseInstallmentPayment;
 use App\Services\BasketOrderFulfillmentService;
+use App\Services\SubscriptionFulfillmentService;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -586,25 +587,23 @@ class StripeController extends WebhookController
     }
 
     /**
-     * Handle subscription purchase
+     * Handle subscription purchase (checkout.session.completed, mode=subscription).
+     * Uses SubscriptionFulfillmentService so subscription is saved to DB (webhook or payment-success page).
      */
     protected function handleSubscriptionPurchase(array $session)
     {
         try {
-            // Subscription handling is typically done by Cashier automatically
-            // This method is here for any additional logic if needed
-            Log::info('Subscription purchase completed', [
+            Log::info('Subscription purchase completed (webhook)', [
                 'session_id' => $session['id'],
                 'subscription_id' => $session['subscription'] ?? null,
-                'customer_id' => $session['customer'] ?? null
             ]);
-
+            app(SubscriptionFulfillmentService::class)->fulfillFromSession($session);
             return $this->successMethod();
         } catch (Exception $e) {
             Log::error('Subscription purchase error: ' . $e->getMessage(), [
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
-                'session' => $session
+                'session_id' => $session['id'] ?? null,
             ]);
             return $this->successMethod();
         }

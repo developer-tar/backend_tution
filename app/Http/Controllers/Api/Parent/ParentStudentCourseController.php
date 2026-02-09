@@ -84,7 +84,7 @@ class ParentStudentCourseController extends Controller
 
     /**
      * Get parent subscriptions.
-     * 
+     *
      * @return \Illuminate\Http\JsonResponse
      */
     public function getSubscriptions()
@@ -102,6 +102,32 @@ class ParentStudentCourseController extends Controller
         } catch (\Exception $e) {
             Log::error("Failed to fetch subscriptions. Message => {$e->getMessage()}");
             return sendError('error', ['error' => 'An error occurred while fetching subscriptions.'], 500);
+        }
+    }
+
+    /**
+     * Get course IDs the parent has subscribed to (for showing "Subscribed" on course detail page).
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getSubscribedCourseIds()
+    {
+        try {
+            $parentId = auth()->user()->id;
+            $courseIds = $this->parentCourseService->getSubscribedCourseIds($parentId);
+
+            return response()->json([
+                'success' => true,
+                'data' => ['course_ids' => $courseIds],
+                'message' => 'Subscribed course IDs fetched.',
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error("Failed to fetch subscribed course IDs. Message => {$e->getMessage()}");
+            return response()->json([
+                'success' => false,
+                'data' => ['course_ids' => []],
+                'message' => 'An error occurred.',
+            ], 500);
         }
     }
 }

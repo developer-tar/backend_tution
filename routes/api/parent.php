@@ -47,6 +47,7 @@ Route::post('/checkout/fulfill', [PaymentController::class, 'fulfill']);
 
 // Parent subscriptions
 Route::get('subscriptions', [ParentStudentCourseController::class, 'getSubscriptions']);
+Route::get('subscribed-course-ids', [ParentStudentCourseController::class, 'getSubscribedCourseIds']);
 
 // Paper checkout for parents
 Route::post('paper/checkout', [PaperPurchaseController::class, 'parentCheckout']);
